@@ -185,3 +185,12 @@ out/
 
 *.local
 *.local.*
+# pickle
+*.pkl
+*.pth
+*.pt
+*.bin
+*.model
+
+# Json
+*.json
