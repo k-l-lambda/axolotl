@@ -143,10 +143,9 @@ def do_merge_lora(
 
     LOG.info("running merge of LoRA with base model")
     model = model.merge_and_unload(progressbar=True)
-    try:
-        model.to(dtype=cfg.torch_dtype)
-    except RuntimeError:
-        pass
+    LOG.info("merged LoRA with base model")
+    LOG.info(str(model))
+    model.to(dtype=torch.float16)
     model.generation_config.do_sample = True
 
     if cfg.local_rank == 0:
