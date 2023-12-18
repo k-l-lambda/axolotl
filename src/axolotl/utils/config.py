@@ -358,6 +358,21 @@ def validate_config(cfg):
             "eval_steps and evaluation_strategy are not supported with val_set_size == 0"
         )
 
+    if (
+        cfg.sample_packing
+        and cfg.eval_table_size
+        and cfg.eval_sample_packing is not False
+    ):
+        raise ValueError(
+            "eval_table_size and eval_sample_packing are not supported together with sample_packing. Please set 'eval_sample_packing' to false."
+        )
+
+    if not cfg.adapter and not cfg.medusa_only_heads and (cfg.load_in_8bit or cfg.load_in_4bit):
+        raise ValueError(
+            "load_in_8bit and load_in_4bit are not supported without setting an adapter."
+            "If you want to full finetune, please turn off load_in_8bit and load_in_4bit."
+        )
+
     # TODO
     # MPT 7b
     # https://github.com/facebookresearch/bitsandbytes/issues/25
