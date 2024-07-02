@@ -7,6 +7,8 @@ from pathlib import Path
 import fire
 import transformers
 from colorama import Fore
+from dotenv import load_dotenv
+from transformers import AutoModelForCausalLM
 
 from axolotl.cli import (
     check_accelerate_default_config,
@@ -50,4 +52,5 @@ def do_cli(config: Path = Path("examples/"), **kwargs):
 
 
 if __name__ == "__main__":
+    load_dotenv()
     fire.Fire(do_cli)

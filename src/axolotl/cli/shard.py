@@ -6,6 +6,7 @@ from pathlib import Path
 
 import fire
 import transformers
+from dotenv import load_dotenv
 
 from axolotl.cli import load_cfg, print_axolotl_text_art
 from axolotl.common.cli import TrainerCliArgs, load_model_and_tokenizer
@@ -39,4 +40,5 @@ def do_cli(config: Path = Path("examples/"), **kwargs):
 
 
 if __name__ == "__main__":
+    load_dotenv()
     fire.Fire(do_cli)

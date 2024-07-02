@@ -29,3 +29,4 @@ scikit-learn
 pynvml
 art
 fschat
+python-dotenv==1.0.1
