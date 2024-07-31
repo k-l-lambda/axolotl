@@ -175,3 +175,6 @@ wandb
 
 # Json
 *.json
+
+*.local
+*.local.*
