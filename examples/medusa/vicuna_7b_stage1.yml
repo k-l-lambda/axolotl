@@ -9,11 +9,12 @@ load_in_4bit: false
 strict: false
 
 datasets:
-  - path: ShareGPT_Vicuna_unfiltered/ShareGPT_V4.3_unfiltered_cleaned_split.json
+  - path: /models/datasets/ShareGPT/
     type: sharegpt
+    data_files: ShareGPT_V4.3_unfiltered_cleaned_split.json
 dataset_prepared_path:
 val_set_size: 0.01
-output_dir: ./vicuna_7b_stage1
+output_dir: ./outputs/vicuna_7b_stage1
 
 sequence_len: 4096
 sample_packing: true
@@ -27,7 +28,7 @@ wandb_log_model:
 
 gradient_accumulation_steps: 4
 micro_batch_size: 2
-num_epochs: 2
+num_epochs: 4
 optimizer: adamw_bnb_8bit
 lr_scheduler: cosine
 learning_rate: 0.0005
