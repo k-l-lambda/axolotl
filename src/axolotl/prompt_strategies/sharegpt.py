@@ -93,6 +93,24 @@ def build_loader(
     return _load
 
 
+def load_role_user(tokenizer, cfg):
+    return RoleUserShareGPTPromptTokenizingStrategy(
+        ShareGPTPrompterV2(),
+        tokenizer,
+        cfg.train_on_inputs,
+        cfg.sequence_len,
+    )
+
+
+def load_guanaco(tokenizer, cfg):
+    return GuanacoShareGPTPromptTokenizingStrategy(
+        ShareGPTPrompterV2(),
+        tokenizer,
+        cfg.train_on_inputs,
+        cfg.sequence_len,
+    )
+
+
 class SimpleShareGPTPromptTokenizingStrategy(ShareGPTPromptTokenizingStrategy):
     """
     basic sharegpt strategy to grab conversations from the sample row
@@ -163,6 +181,23 @@ class SimpleRoleShareGPTPromptTokenizingStrategy(
         conversations = prompt["conversations"]
         # remap role: prompter/assistant, text: ... => from: human/gpt, value: ...
         turns = [{"from": t["role"], "value": t["value"]} for t in conversations]
+        return turns
+
+
+class RoleUserShareGPTPromptTokenizingStrategy(ShareGPTPromptTokenizingStrategy):
+    """
+    [
+        {'role': 'user', 'content': 'Hello, how are you?'}
+        {'role': 'assistant', 'content': 'I am good, thank you.'}
+    ]
+    """
+
+    def get_conversation_thread(self, prompt):
+        conversations = prompt["conversations"]
+        role_map = {"user": "human", "assistant": "gpt", "system": "system"}
+        turns = [
+            {"from": role_map[t["role"]], "value": t["content"]} for t in conversations
+        ]
         return turns
 
 
