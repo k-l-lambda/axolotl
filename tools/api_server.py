@@ -41,6 +41,9 @@ def worker (device_index, qin, qout):
 		tokenizer.pad_token_id = eos_token_id
 		eos_token_id = tokenizer.convert_tokens_to_ids("<|eot_id|>")
 
+	if tokenizer.pad_token_id is None: # set PAD token for llama3.1
+		tokenizer.pad_token_id = tokenizer.convert_tokens_to_ids("<|end_of_text|>")
+
 	while True:
 		input = qin.get()
 		if input is None:
