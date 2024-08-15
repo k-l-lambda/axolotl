@@ -761,7 +761,7 @@ def load_model(
         import bitsandbytes as bnb
         from bitsandbytes.functional import dequantize_4bit
         from peft.utils import _get_submodules
-        import gc
+        #import gc
 
         LOG.info("dequantizing qlora model")
         dtype = torch.float16

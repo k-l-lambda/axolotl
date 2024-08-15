@@ -325,7 +325,7 @@ def replace_create_optimizer(
     medusa_lr_multiplier,
 ):
     # Copy from transformers.Trainer.create_optimizer
-    from transformers.trainer import is_sagemaker_mp_enabled, Trainer, ShardedDDPOption
+    from transformers.trainer import is_sagemaker_mp_enabled, Trainer#, ShardedDDPOption
     def create_optimizer(self):
         """
         Setup the optimizer.
@@ -363,7 +363,7 @@ def replace_create_optimizer(
 
             optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(self.args)
 
-            if hasattr(self, "sharded_ddp") and self.sharded_ddp == ShardedDDPOption.SIMPLE:
+            if hasattr(self, "sharded_ddp") and self.sharded_ddp == "simple":#ShardedDDPOption.SIMPLE:
                 self.optimizer = OSS(
                     params=optimizer_grouped_parameters,
                     optim=optimizer_cls,

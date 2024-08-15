@@ -490,6 +490,7 @@ class MedusaConfig(BaseModel):
     medusa_scheduler: Optional[str] = None
     medusa_lr_multiplier: Optional[float] = None
     medusa_only_heads: Optional[bool] = None
+    medusa_num_unfreeze_layers: Optional[int] = 0
 
 
 # pylint: disable=too-many-public-methods,too-many-ancestors
