@@ -38,6 +38,7 @@ def worker (device_index, qin, qout):
 
 	eos_token_id = tokenizer.eos_token_id
 	if eos_token_id == 128001: # set EOS token for llama3
+		tokenizer.pad_token_id = eos_token_id
 		eos_token_id = tokenizer.convert_tokens_to_ids("<|eot_id|>")
 
 	while True:
@@ -72,6 +73,7 @@ def worker (device_index, qin, qout):
 					top_k=input['top_k'],
 					max_new_tokens=input['max_new_tokens'],
 					eos_token_id=eos_token_id,
+					pad_token_id=tokenizer.pad_token_id,
 				)
 
 			generated_text = tokenizer.decode(output_ids[0, input_ids.shape[1]:], skip_special_tokens=True)
