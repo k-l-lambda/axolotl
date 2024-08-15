@@ -223,7 +223,7 @@ class UltrachatShareGPTPromptTokenizingStrategy(SimpleShareGPTPromptTokenizingSt
 
     def get_conversation_thread(self, prompt):
         conversations = prompt["messages"]
-        role_map = {"user": "human", "assistant": "gpt"}
+        role_map = {"user": "human", "assistant": "gpt", "system": "system"}
         turns = [
             {"from": role_map[t["role"]], "value": t["content"]} for t in conversations
         ]
