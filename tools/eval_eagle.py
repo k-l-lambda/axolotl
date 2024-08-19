@@ -6,10 +6,11 @@ from accelerate.utils import set_seed
 from tqdm import tqdm
 import torch
 import datasets
-from transformers import AutoTokenizer, AutoModelForCausalLM
 import time
 import json
 import shortuuid
+
+from axolotl.models.eagle import EaModel
 
 
 set_seed(0)
@@ -20,21 +21,30 @@ app = typer.Typer()
 @torch.inference_mode()
 def get_model_answers(
 	base_model_path,
+	ea_model_path,
 	model_id,
 	questions,
 	answer_file,
 	max_new_token,
 	num_choices,
+	total_token,
+	depth,
+	top_k,
 ):
-	#print('questions:', questions)
-	tokenizer = AutoTokenizer.from_pretrained(base_model_path, use_fast=False)
-
-	model = AutoModelForCausalLM.from_pretrained(
-		base_model_path,
+	model = EaModel.from_pretrained(
+		base_model_path=base_model_path,
+		ea_model_path=ea_model_path,
+		total_token=total_token,
+		depth=depth,
+		top_k=top_k,
 		torch_dtype=torch.float16,
-		device_map='cuda',
+		low_cpu_mem_usage=True,
+		# load_in_8bit=True,
+		device_map="auto"
 	)
 	model.eval()
+
+	tokenizer = model.get_tokenizer()
 
 	pad_token_id = tokenizer.pad_token_id or tokenizer.convert_tokens_to_ids("<|end_of_text|>")
 	eos_token_id = tokenizer.convert_tokens_to_ids("<|eot_id|>") if tokenizer.eos_token_id is None or tokenizer.eos_token_id == pad_token_id else tokenizer.eos_token_id
@@ -58,18 +68,13 @@ def get_model_answers(
 			)
 			input_ids = tokenizer([prompt],add_special_tokens=False,).input_ids
 
-			# try:
 			torch.cuda.synchronize()
 
-			output_ids = model.generate(
+			output_ids, new_token, idx, _ = model.eagenerate(
 				torch.as_tensor(input_ids).cuda(),
-				do_sample=False,
-				temperature=None,
-				top_p=None,
-				top_k=None,
-				eos_token_id=eos_token_id,
-				pad_token_id=pad_token_id,
-				max_new_tokens=1,
+				temperature=0,
+				log=True,
+				is_llama3=True,
 			)
 			torch.cuda.synchronize()
 
@@ -79,9 +84,10 @@ def get_model_answers(
 			torch.manual_seed(i)
 			messages = []
 			turns = []
-			#idxs = []
+			taus = []
 			new_tokens = []
 			wall_time = []
+			profiler = {}
 
 			if question['system'] is not None:
 				messages.append(dict(
@@ -108,15 +114,13 @@ def get_model_answers(
 				torch.cuda.synchronize()
 				start_time = time.time()
 
-				output_ids = model.generate(
+				output_ids, new_token, idx, accept_lengths = model.eagenerate(
 					torch.as_tensor(input_ids).cuda(),
-					do_sample=False,
-					temperature=None,
-					top_p=None,
-					top_k=None,
-					eos_token_id=eos_token_id,
-					pad_token_id=pad_token_id,
+					temperature=0,
+					log=True,
+					is_llama3=True,
 					max_new_tokens=max_new_token,
+					profiler=profiler,
 				)
 				torch.cuda.synchronize()
 				total_time = time.time() - start_time
@@ -152,7 +156,7 @@ def get_model_answers(
 				output = output.strip()
 
 				turns.append(output)
-				#idxs.append(int(idx))
+				taus += accept_lengths
 				new_tokens.append(int(new_token))
 				wall_time.append(total_time)
 				messages.append({
@@ -160,7 +164,16 @@ def get_model_answers(
 					"content": output
 				})
 			# torch.cuda.empty_cache()
-			choices.append({"index": i, "turns": turns, "new_tokens": new_tokens, "wall_time": wall_time})
+			choices.append({
+				"index": i,
+				"turns": turns,
+				"taus": taus,
+				"new_tokens": new_tokens,
+				"wall_time": wall_time,
+				"base_time": profiler["base"],
+				"ealayer_time": profiler["ea_layer"],
+				"head_time": profiler["head"],
+			})
 
 		# Dump answers
 		os.makedirs(os.path.dirname(answer_file), exist_ok=True)
@@ -178,18 +191,20 @@ def get_model_answers(
 @app.command()
 def run_eval(
 	base_model_path: Annotated[str, typer.Option('--base-model-path', help='Path to the base model.')],
+	ea_model_path: Annotated[str, typer.Option('--ea-model-path', help='Path to the EAGLE model.')],
 	data_path: Annotated[str, typer.Option('--data-path', help='Path to the data.')],
+	postfix: Annotated[str, typer.Option('--postfix', help='Postfix on answer file name.')],
 	max_new_token: Annotated[int, typer.Option('--max-new-token', help='Maximum number of new tokens to generate.')] = 512,
-	#num_choices: Annotated[int, typer.Option('--num-choices', help='Number of choices.')] = 1,
-	#num_gpus_per_model,
-	#num_gpus_total,
+	total_token: Annotated[int, typer.Option('--total-token', help='Total draft token number.')] = 60,
+	depth: Annotated[int, typer.Option('--depth', help='Tree attention depth.')] = 5,
+	top_k: Annotated[int, typer.Option('--top-k', help='K of tree attention top K choices.')] = 10,
 ):
 	model_id = base_model_path.split('/')[-1]
 
 	data_name = os.path.basename(data_path)
 	data_name = os.path.splitext(data_name)[0]
 
-	answer_file = f'./evaluation/{model_id}-{data_name}-baseline.jsonl'
+	answer_file = f'./evaluation/{model_id}-{data_name}-eagle-{postfix}.jsonl'
 
 	questions = datasets.Dataset.from_json(data_path)
 
@@ -203,11 +218,15 @@ def run_eval(
 	ans_handles.append(
 		get_model_answers(
 			base_model_path,
+			ea_model_path,
 			model_id,
 			questions,
 			answer_file,
 			max_new_token,
 			1,
+			total_token=total_token,
+			depth=depth,
+			top_k=top_k,
 		)
 	)
 
