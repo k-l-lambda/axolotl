@@ -107,9 +107,16 @@ def get_model_answers(
 			torch.manual_seed(i)
 			messages = []
 			turns = []
-			idxs = []
+			#idxs = []
 			new_tokens = []
 			wall_time = []
+
+			if question['system'] is not None:
+				messages.append(dict(
+					role="system",
+					content=question['system'],
+				))
+
 			for j in range(len(question["turns"])):
 				qs = question["turns"][j]
 				messages.append({
