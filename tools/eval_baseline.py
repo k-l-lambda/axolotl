@@ -69,7 +69,7 @@ def get_model_answers(
 				top_k=None,
 				eos_token_id=eos_token_id,
 				pad_token_id=pad_token_id,
-				max_new_tokens=16,
+				max_new_tokens=1,
 			)
 			torch.cuda.synchronize()
 			output_ids = output_ids[0][len(input_ids[0]):]
@@ -122,6 +122,9 @@ def get_model_answers(
 					add_generation_prompt=True,
 				)
 				input_ids = tokenizer([prompt], add_special_tokens=False, ).input_ids
+				#print('input_ids:', len(input_ids[0]))
+				if len(input_ids[0]) > 4096:
+					break
 
 				torch.cuda.synchronize()
 				start_time = time.time()
