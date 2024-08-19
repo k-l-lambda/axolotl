@@ -37,7 +37,7 @@ def get_model_answers(
 	model.eval()
 
 	pad_token_id = tokenizer.pad_token_id or tokenizer.convert_tokens_to_ids("<|end_of_text|>")
-	eos_token_id = tokenizer.convert_tokens_to_ids("<|eot_id|>") if tokenizer.eos_token_id is None or tokenizer.eos_token_id == tokenizer.pad_token_id else tokenizer.eos_token_id
+	eos_token_id = tokenizer.convert_tokens_to_ids("<|eot_id|>") if tokenizer.eos_token_id is None or tokenizer.eos_token_id == pad_token_id else tokenizer.eos_token_id
 
 	# warmup
 	question0 = questions[0]
@@ -144,8 +144,8 @@ def get_model_answers(
 
 				# be consistent with the template's stop_token_ids
 				stop_token_ids = [
-					tokenizer.eos_token_id,
-					tokenizer.convert_tokens_to_ids("<|eot_id|>")
+					eos_token_id,
+					pad_token_id,
 				]
 
 				if stop_token_ids:
@@ -196,7 +196,6 @@ def get_model_answers(
 @app.command()
 def run_eval(
 	base_model_path: Annotated[str, typer.Option('--base-model-path', help='Path to the base model.')],
-	#model_id: Annotated[str, typer.Option('--model-id', help='Model ID.')]
 	data_path: Annotated[str, typer.Option('--data-path', help='Path to the data.')],
 	max_new_token: Annotated[int, typer.Option('--max-new-token', help='Maximum number of new tokens to generate.')] = 512,
 	#num_choices: Annotated[int, typer.Option('--num-choices', help='Number of choices.')] = 1,
