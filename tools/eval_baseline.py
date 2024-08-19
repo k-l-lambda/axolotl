@@ -211,6 +211,12 @@ def run_eval(
 
 	questions = datasets.Dataset.from_json(data_path)
 
+	if os.path.exists(answer_file):
+		answers = datasets.Dataset.from_json(answer_file)
+		ids = answers['question_id']
+		questions = questions.filter(lambda x: x['question_id'] not in ids)
+		print(f'skipped {len(ids)} finished questions')
+
 	ans_handles = []
 	ans_handles.append(
 		get_model_answers(
