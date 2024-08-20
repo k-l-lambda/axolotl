@@ -41,6 +41,8 @@ def main ():
 
 	for datapoint in data:
 		#qid=datapoint['question_id']
+		if len(datapoint['choices']) <= 0:
+			continue
 		answer = datapoint['choices'][0]['turns']
 		tokens = sum(datapoint['choices'][0]['new_tokens'])
 		times = sum(datapoint['choices'][0]['wall_time'])
@@ -61,9 +63,9 @@ def main ():
 			data.append(json_obj)
 
 
-	total_time=0
-	total_token=0
-	speeds0=[]
+	total_time = 0
+	total_token = 0
+	speeds0 = []
 	for datapoint in data:
 		#qid=datapoint['question_id']
 		answer = datapoint['choices'][0]['turns']
@@ -71,6 +73,8 @@ def main ():
 		for i in answer:
 			tokens += (len(tokenizer(i).input_ids) - 1)
 		times = sum(datapoint['choices'][0]['wall_time'])
+		if times <= 0:
+			continue
 		speeds0.append(tokens / times)
 		total_time += times
 		total_token += tokens
