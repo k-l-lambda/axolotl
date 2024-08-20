@@ -197,6 +197,9 @@ def run_eval(
 		answers = datasets.Dataset.from_json(answer_file)
 		ids = answers['question_id']
 		questions = questions.filter(lambda x: x['question_id'] not in ids)
+		if len(questions) == 0:
+			print(f'Already compelted {data_name}.')
+			return
 		print(f'skipped {len(ids)} finished questions')
 
 	ans_handles = []

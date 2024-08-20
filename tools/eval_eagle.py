@@ -75,6 +75,7 @@ def get_model_answers(
 				temperature=0,
 				log=True,
 				is_llama3=True,
+				max_new_tokens=16,
 			)
 			torch.cuda.synchronize()
 
@@ -108,7 +109,7 @@ def get_model_answers(
 				)
 				input_ids = tokenizer([prompt], add_special_tokens=False, ).input_ids
 				#print('input_ids:', len(input_ids[0]))
-				if len(input_ids[0]) > 4096:
+				if len(input_ids[0]) > 3480:
 					break
 
 				torch.cuda.synchronize()
@@ -120,6 +121,7 @@ def get_model_answers(
 					log=True,
 					is_llama3=True,
 					max_new_tokens=max_new_token,
+					max_length=8192,
 					profiler=profiler,
 				)
 				torch.cuda.synchronize()
@@ -164,15 +166,18 @@ def get_model_answers(
 					"content": output
 				})
 			# torch.cuda.empty_cache()
+			if not "base" in profiler:
+				continue
+
 			choices.append({
 				"index": i,
 				"turns": turns,
 				"taus": taus,
 				"new_tokens": new_tokens,
 				"wall_time": wall_time,
-				"base_time": profiler["base"],
-				"ealayer_time": profiler["ea_layer"],
-				"head_time": profiler["head"],
+				"base_time": profiler.get("base", 0),
+				"ealayer_time": profiler.get("ea_layer", 0),
+				"head_time": profiler.get("head", 0),
 			})
 
 		# Dump answers
@@ -212,6 +217,9 @@ def run_eval(
 		answers = datasets.Dataset.from_json(answer_file)
 		ids = answers['question_id']
 		questions = questions.filter(lambda x: x['question_id'] not in ids)
+		if len(questions) == 0:
+			print(f'Already compelted {data_name}.')
+			return
 		print(f'skipped {len(ids)} finished questions')
 
 	ans_handles = []
