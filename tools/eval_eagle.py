@@ -109,7 +109,7 @@ def get_model_answers(
 				)
 				input_ids = tokenizer([prompt], add_special_tokens=False, ).input_ids
 				#print('input_ids:', len(input_ids[0]))
-				if len(input_ids[0]) > 3480:
+				if len(input_ids[0]) > 3400:
 					break
 
 				torch.cuda.synchronize()
@@ -218,7 +218,7 @@ def run_eval(
 		ids = answers['question_id']
 		questions = questions.filter(lambda x: x['question_id'] not in ids)
 		if len(questions) == 0:
-			print(f'Already compelted {data_name}.')
+			print(f'Already completed: {data_name}.')
 			return
 		print(f'skipped {len(ids)} finished questions')
 
