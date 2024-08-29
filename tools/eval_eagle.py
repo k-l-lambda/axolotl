@@ -209,7 +209,7 @@ def run_eval(
 	data_name = os.path.basename(data_path)
 	data_name = os.path.splitext(data_name)[0]
 
-	answer_file = f'./evaluation/{model_id}-{data_name}-eagle-{postfix}.jsonl'
+	answer_file = f'./evaluation/{model_id}/{data_name}-eagle-{postfix}.jsonl'
 
 	questions = datasets.Dataset.from_json(data_path)
 
