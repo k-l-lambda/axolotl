@@ -189,6 +189,8 @@ def run_eval(
 	data_name = os.path.basename(data_path)
 	data_name = os.path.splitext(data_name)[0]
 
+	os.makedirs(f'./evaluation/{model_id}', exist_ok=True)
+
 	answer_file = f'./evaluation/{model_id}/{data_name}-baseline.jsonl'
 
 	questions = datasets.Dataset.from_json(data_path)
