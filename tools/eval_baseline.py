@@ -40,7 +40,7 @@ def complete_chat (question, tokenizer, model, eos_token_id, pad_token_id, max_n
 			tokenize=False,
 			add_generation_prompt=True,
 		)
-		input_ids = tokenizer([prompt], add_special_tokens=False, ).input_ids
+		input_ids = tokenizer([prompt], add_special_tokens=False).input_ids
 		#print('input_ids:', len(input_ids[0]))
 		if len(input_ids[0]) > 4096:
 			break
@@ -92,7 +92,6 @@ def complete_chat (question, tokenizer, model, eos_token_id, pad_token_id, max_n
 		output = output.strip()
 
 		turns.append(output)
-		#idxs.append(int(idx))
 		new_tokens.append(int(new_token))
 		wall_time.append(total_time)
 		messages.append({
@@ -103,14 +102,59 @@ def complete_chat (question, tokenizer, model, eos_token_id, pad_token_id, max_n
 	return turns, new_tokens, wall_time
 
 
+def complete_instruction (question, tokenizer, model, eos_token_id, pad_token_id, max_new_token):
+	turns = []
+	new_tokens = []
+	wall_time = []
+
+	prompt = question['prompt']
+	stop_strings = json.loads(question['stop'])
+
+	input_ids = tokenizer([prompt], add_special_tokens=False).input_ids
+
+	torch.cuda.synchronize()
+	start_time = time.time()
+
+	output_ids = model.generate(
+		torch.as_tensor(input_ids).cuda(),
+		do_sample=False,
+		temperature=None,
+		top_p=None,
+		top_k=None,
+		eos_token_id=eos_token_id,
+		pad_token_id=pad_token_id,
+		max_new_tokens=max_new_token,
+		stop_strings=stop_strings,
+		tokenizer=tokenizer,
+	)
+	torch.cuda.synchronize()
+	total_time = time.time() - start_time
+	output_ids = output_ids[0][len(input_ids[0]):]
+
+	new_token = output_ids.shape[0]
+
+	output = tokenizer.decode(
+		output_ids,
+		spaces_between_special_tokens=False,
+		skip_special_tokens=True,
+	)
+
+	turns.append(output)
+	new_tokens.append(int(new_token))
+	wall_time.append(total_time)
+
+	return turns, new_tokens, wall_time
+
+
 @torch.inference_mode()
-def get_model_answers(
+def get_model_answers (
 	base_model_path,
 	model_id,
 	questions,
 	answer_file,
 	max_new_token,
 	num_choices,
+	by_instruction=False,
 ):
 	#print('questions:', questions)
 	tokenizer = AutoTokenizer.from_pretrained(base_model_path, use_fast=False)
@@ -125,17 +169,19 @@ def get_model_answers(
 	pad_token_id = tokenizer.pad_token_id or tokenizer.convert_tokens_to_ids("<|end_of_text|>")
 	eos_token_id = tokenizer.convert_tokens_to_ids("<|eot_id|>") if tokenizer.eos_token_id is None or tokenizer.eos_token_id == pad_token_id else tokenizer.eos_token_id
 
+	complete_method = complete_instruction if by_instruction else complete_chat
+
 	# warmup
 	question0 = questions[0]
 	for _ in tqdm(range(3), desc='Warming up'):
 		torch.manual_seed(0)
-		complete_chat(question0, tokenizer, model, eos_token_id, pad_token_id, max_new_token)
+		complete_method(question0, tokenizer, model, eos_token_id, pad_token_id, max_new_token)
 
 	for question in tqdm(questions):
 		choices = []
 		for i in range(num_choices):
 			torch.manual_seed(i)
-			turns, new_tokens, wall_time = complete_chat(question, tokenizer, model, eos_token_id, pad_token_id, max_new_token)
+			turns, new_tokens, wall_time = complete_method(question, tokenizer, model, eos_token_id, pad_token_id, max_new_token)
 
 			# torch.cuda.empty_cache()
 			choices.append({"index": i, "turns": turns, "new_tokens": new_tokens, "wall_time": wall_time})
@@ -154,18 +200,16 @@ def get_model_answers(
 
 
 @app.command()
-def run_eval(
+def run_eval (
 	base_model_path: Annotated[str, typer.Option('--base-model-path', help='Path to the base model.')],
 	data_path: Annotated[str, typer.Option('--data-path', help='Path to the data.')],
 	max_new_token: Annotated[int, typer.Option('--max-new-token', help='Maximum number of new tokens to generate.')] = 512,
-	#num_choices: Annotated[int, typer.Option('--num-choices', help='Number of choices.')] = 1,
-	#num_gpus_per_model,
-	#num_gpus_total,
+	by_instruction: Annotated[bool, typer.Option('--instruct', help='Use instruction data against chat.')] = False,
 ):
 	model_id = base_model_path.split('/')[-1]
 
 	data_name = os.path.basename(data_path)
-	data_name = os.path.splitext(data_name)[0]
+	data_name = os.path.splitext(data_name)[0].replace('.local', '')
 
 	os.makedirs(f'./evaluation/{model_id}', exist_ok=True)
 
@@ -190,7 +234,8 @@ def run_eval(
 			questions,
 			answer_file,
 			max_new_token,
-			1,
+			num_choices=1,
+			by_instruction=by_instruction,
 		)
 	)
 
