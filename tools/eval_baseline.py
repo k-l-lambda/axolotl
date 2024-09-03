@@ -17,6 +17,92 @@ set_seed(0)
 app = typer.Typer()
 
 
+def complete_chat (question, tokenizer, model, eos_token_id, pad_token_id, max_new_token):
+	messages = []
+	turns = []
+	new_tokens = []
+	wall_time = []
+
+	if question['system'] is not None:
+		messages.append(dict(
+			role="system",
+			content=question['system'],
+		))
+
+	for j in range(len(question["turns"])):
+		qs = question["turns"][j]
+		messages.append({
+			"role": "user",
+			"content": qs
+		})
+		prompt = tokenizer.apply_chat_template(
+			messages,
+			tokenize=False,
+			add_generation_prompt=True,
+		)
+		input_ids = tokenizer([prompt], add_special_tokens=False, ).input_ids
+		#print('input_ids:', len(input_ids[0]))
+		if len(input_ids[0]) > 4096:
+			break
+
+		torch.cuda.synchronize()
+		start_time = time.time()
+
+		output_ids = model.generate(
+			torch.as_tensor(input_ids).cuda(),
+			do_sample=False,
+			temperature=None,
+			top_p=None,
+			top_k=None,
+			eos_token_id=eos_token_id,
+			pad_token_id=pad_token_id,
+			max_new_tokens=max_new_token,
+		)
+		torch.cuda.synchronize()
+		total_time = time.time() - start_time
+		output_ids = output_ids[0][len(input_ids[0]):]
+
+		new_token = output_ids.shape[0]
+
+		# be consistent with the template's stop_token_ids
+		stop_token_ids = [
+			eos_token_id,
+			pad_token_id,
+		]
+
+		if stop_token_ids:
+			stop_token_ids_index = [
+				i
+				for i, id in enumerate(output_ids)
+				if id in stop_token_ids
+			]
+			if len(stop_token_ids_index) > 0:
+				output_ids = output_ids[: stop_token_ids_index[0]]
+
+		output = tokenizer.decode(
+			output_ids,
+			spaces_between_special_tokens=False,
+		)
+		for special_token in tokenizer.special_tokens_map.values():
+			if isinstance(special_token, list):
+				for special_tok in special_token:
+					output = output.replace(special_tok, "")
+			else:
+				output = output.replace(special_token, "")
+		output = output.strip()
+
+		turns.append(output)
+		#idxs.append(int(idx))
+		new_tokens.append(int(new_token))
+		wall_time.append(total_time)
+		messages.append({
+			"role": "assistant",
+			"content": output
+		})
+
+	return turns, new_tokens, wall_time
+
+
 @torch.inference_mode()
 def get_model_answers(
 	base_model_path,
@@ -43,122 +129,14 @@ def get_model_answers(
 	question0 = questions[0]
 	for _ in tqdm(range(3), desc='Warming up'):
 		torch.manual_seed(0)
-
-		messages = []
-		for j in range(len(question0["turns"])):
-			qs = question0["turns"][j]
-			messages.append({
-				"role": "user",
-				"content": qs,
-			})
-			prompt = tokenizer.apply_chat_template(
-				messages,
-				tokenize=False,
-				add_generation_prompt=True,
-			)
-			input_ids = tokenizer([prompt],add_special_tokens=False,).input_ids
-
-			# try:
-			torch.cuda.synchronize()
-
-			output_ids = model.generate(
-				torch.as_tensor(input_ids).cuda(),
-				do_sample=False,
-				temperature=None,
-				top_p=None,
-				top_k=None,
-				eos_token_id=eos_token_id,
-				pad_token_id=pad_token_id,
-				max_new_tokens=1,
-			)
-			torch.cuda.synchronize()
+		complete_chat(question0, tokenizer, model, eos_token_id, pad_token_id, max_new_token)
 
 	for question in tqdm(questions):
 		choices = []
 		for i in range(num_choices):
 			torch.manual_seed(i)
-			messages = []
-			turns = []
-			#idxs = []
-			new_tokens = []
-			wall_time = []
+			turns, new_tokens, wall_time = complete_chat(question, tokenizer, model, eos_token_id, pad_token_id, max_new_token)
 
-			if question['system'] is not None:
-				messages.append(dict(
-					role="system",
-					content=question['system'],
-				))
-
-			for j in range(len(question["turns"])):
-				qs = question["turns"][j]
-				messages.append({
-					"role": "user",
-					"content": qs
-				})
-				prompt = tokenizer.apply_chat_template(
-					messages,
-					tokenize=False,
-					add_generation_prompt=True,
-				)
-				input_ids = tokenizer([prompt], add_special_tokens=False, ).input_ids
-				#print('input_ids:', len(input_ids[0]))
-				if len(input_ids[0]) > 4096:
-					break
-
-				torch.cuda.synchronize()
-				start_time = time.time()
-
-				output_ids = model.generate(
-					torch.as_tensor(input_ids).cuda(),
-					do_sample=False,
-					temperature=None,
-					top_p=None,
-					top_k=None,
-					eos_token_id=eos_token_id,
-					pad_token_id=pad_token_id,
-					max_new_tokens=max_new_token,
-				)
-				torch.cuda.synchronize()
-				total_time = time.time() - start_time
-				output_ids = output_ids[0][len(input_ids[0]):]
-
-				new_token = output_ids.shape[0]
-
-				# be consistent with the template's stop_token_ids
-				stop_token_ids = [
-					eos_token_id,
-					pad_token_id,
-				]
-
-				if stop_token_ids:
-					stop_token_ids_index = [
-						i
-						for i, id in enumerate(output_ids)
-						if id in stop_token_ids
-					]
-					if len(stop_token_ids_index) > 0:
-						output_ids = output_ids[: stop_token_ids_index[0]]
-
-				output = tokenizer.decode(
-					output_ids,
-					spaces_between_special_tokens=False,
-				)
-				for special_token in tokenizer.special_tokens_map.values():
-					if isinstance(special_token, list):
-						for special_tok in special_token:
-							output = output.replace(special_tok, "")
-					else:
-						output = output.replace(special_token, "")
-				output = output.strip()
-
-				turns.append(output)
-				#idxs.append(int(idx))
-				new_tokens.append(int(new_token))
-				wall_time.append(total_time)
-				messages.append({
-					"role": "assistant",
-					"content": output
-				})
 			# torch.cuda.empty_cache()
 			choices.append({"index": i, "turns": turns, "new_tokens": new_tokens, "wall_time": wall_time})
 
