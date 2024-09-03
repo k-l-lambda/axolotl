@@ -110,13 +110,14 @@ def complete_instruction (question, tokenizer, model, eos_token_id, pad_token_id
 	prompt = question['prompt']
 	stop_strings = json.loads(question['stop'])
 
-	input_ids = tokenizer([prompt], add_special_tokens=False).input_ids
+	input_ids = tokenizer.encode(prompt, add_special_tokens=False, return_tensors='pt')
+	input_ids = input_ids[:, -4096:]
 
 	torch.cuda.synchronize()
 	start_time = time.time()
 
 	output_ids = model.generate(
-		torch.as_tensor(input_ids).cuda(),
+		input_ids.cuda(),
 		do_sample=False,
 		temperature=None,
 		top_p=None,
@@ -175,7 +176,7 @@ def get_model_answers (
 	question0 = questions[0]
 	for _ in tqdm(range(3), desc='Warming up'):
 		torch.manual_seed(0)
-		complete_method(question0, tokenizer, model, eos_token_id, pad_token_id, max_new_token)
+		complete_method(question0, tokenizer, model, eos_token_id, pad_token_id, max_new_token=16)
 
 	for question in tqdm(questions):
 		choices = []
