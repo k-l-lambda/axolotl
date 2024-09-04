@@ -114,11 +114,11 @@ def complete_instruction (question, tokenizer, model, eos_token_id, pad_token_id
 	profiler = {}
 
 	prompt = question['prompt']
-	stop_strings = json.loads(question['stop'])
+	stop_strings = json.loads(question['stop'].replace('\\\\', '\\'))
 	stop_ids = [[eos_token_id], [pad_token_id]] + [tokenizer.encode(s, add_special_tokens=False) for s in stop_strings]
 
 	input_ids = tokenizer.encode(prompt, add_special_tokens=False, return_tensors='pt')
-	input_ids = input_ids[:, -4096:]
+	input_ids = input_ids[:, -3072:]
 
 	torch.cuda.synchronize()
 	start_time = time.time()
