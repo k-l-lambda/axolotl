@@ -105,6 +105,60 @@ def complete_chat (question, tokenizer, model, eos_token_id, pad_token_id, max_n
 	return turns, taus, new_tokens, wall_time, profiler
 
 
+def complete_instruction (question, tokenizer, model, eos_token_id, pad_token_id, max_new_token):
+	turns = []
+	turns = []
+	taus = []
+	new_tokens = []
+	wall_time = []
+	profiler = {}
+
+	prompt = question['prompt']
+	stop_strings = json.loads(question['stop'])
+	stop_ids = [[eos_token_id], [pad_token_id]] + [tokenizer.encode(s, add_special_tokens=False) for s in stop_strings]
+
+	input_ids = tokenizer.encode(prompt, add_special_tokens=False, return_tensors='pt')
+	input_ids = input_ids[:, -4096:]
+
+	torch.cuda.synchronize()
+	start_time = time.time()
+
+	output_ids, new_token, idx, accept_lengths = model.eagenerate(
+		input_ids.cuda(),
+		temperature=0,
+		log=True,
+		is_llama3=True,
+		max_new_tokens=max_new_token,
+		max_length=8192,
+		profiler=profiler,
+		stop_ids=stop_ids,
+	)
+	torch.cuda.synchronize()
+	total_time = time.time() - start_time
+	output_ids = output_ids[0][len(input_ids[0]):]
+
+	new_token = output_ids.shape[0]
+
+	output = tokenizer.decode(
+		output_ids,
+		spaces_between_special_tokens=False,
+	)
+	for special_token in tokenizer.special_tokens_map.values():
+		if isinstance(special_token, list):
+			for special_tok in special_token:
+				output = output.replace(special_tok, "")
+		else:
+			output = output.replace(special_token, "")
+	output = output.strip()
+
+	turns.append(output)
+	taus += accept_lengths
+	new_tokens.append(int(new_token))
+	wall_time.append(total_time)
+
+	return turns, taus, new_tokens, wall_time, profiler
+
+
 @torch.inference_mode()
 def get_model_answers(
 	base_model_path,
@@ -117,6 +171,7 @@ def get_model_answers(
 	total_token,
 	depth,
 	top_k,
+	by_instruction,
 ):
 	model = EaModel.from_pretrained(
 		base_model_path=base_model_path,
@@ -136,11 +191,13 @@ def get_model_answers(
 	pad_token_id = tokenizer.pad_token_id or tokenizer.convert_tokens_to_ids("<|end_of_text|>")
 	eos_token_id = tokenizer.convert_tokens_to_ids("<|eot_id|>") if tokenizer.eos_token_id is None or tokenizer.eos_token_id == pad_token_id else tokenizer.eos_token_id
 
+	complete_method = complete_instruction if by_instruction else complete_chat
+
 	# warmup
 	question0 = questions[0]
 	for _ in tqdm(range(3), desc='Warming up'):
 		torch.manual_seed(0)
-		complete_chat(
+		complete_method(
 			question0,
 			tokenizer,
 			model,
@@ -153,7 +210,7 @@ def get_model_answers(
 		choices = []
 		for i in range(num_choices):
 			torch.manual_seed(i)
-			turns, taus, new_tokens, wall_time, profiler = complete_chat(
+			turns, taus, new_tokens, wall_time, profiler = complete_method(
 				question,
 				tokenizer,
 				model,
@@ -200,11 +257,12 @@ def run_eval(
 	total_token: Annotated[int, typer.Option('--total-token', help='Total draft token number.')] = 60,
 	depth: Annotated[int, typer.Option('--depth', help='Tree attention depth.')] = 5,
 	top_k: Annotated[int, typer.Option('--top-k', help='K of tree attention top K choices.')] = 10,
+	by_instruction: Annotated[bool, typer.Option('--instruct', help='Use instruction data against chat.')] = False,
 ):
 	model_id = base_model_path.split('/')[-1]
 
 	data_name = os.path.basename(data_path)
-	data_name = os.path.splitext(data_name)[0]
+	data_name = os.path.splitext(data_name)[0].replace('.local', '')
 
 	os.makedirs(f'./evaluation/{model_id}', exist_ok=True)
 
@@ -234,6 +292,7 @@ def run_eval(
 			total_token=total_token,
 			depth=depth,
 			top_k=top_k,
+			by_instruction=by_instruction,
 		)
 	)
 

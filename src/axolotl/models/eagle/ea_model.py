@@ -20,6 +20,11 @@ from huggingface_hub import hf_hub_download
 
 
 
+def is_subarray (a, b):
+	n, m = len(a), len(b)
+	return any(b[i:i + n] == a for i in range(m - n + 1))
+
+
 class EaModel(nn.Module):
 
 	def __init__(
@@ -202,6 +207,7 @@ class EaModel(nn.Module):
 			log=False,
 			is_llama3=False,
 			profiler=None,
+			stop_ids=None,
 	):
 		if is_llama3:
 			stop_token_id = self.tokenizer.convert_tokens_to_ids("<|eot_id|>")
@@ -287,11 +293,16 @@ class EaModel(nn.Module):
 				profiler=profiler,
 			)
 
+			new_ids = input_ids[0, input_len:].tolist()
 			if is_llama3:
-				if stop_token_id in input_ids[0, input_len:].tolist():
+				if stop_token_id in new_ids:
 					break
 
-			if self.tokenizer.eos_token_id in input_ids[0, input_len:].tolist():
+			if stop_ids is not None:
+				if any(is_subarray(ids, new_ids) for ids in stop_ids):
+					break
+
+			if self.tokenizer.eos_token_id in new_ids:
 				break
 			if new_token > max_new_tokens:
 				break
