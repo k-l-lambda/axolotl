@@ -83,7 +83,7 @@ def worker (device_index, qin, qout):
 
 			qout.put(generated_text)
 		except Exception as e:
-			print('error in eagenerate:', e)
+			print('error in generate:', e)
 			qout.put(None)
 
 
