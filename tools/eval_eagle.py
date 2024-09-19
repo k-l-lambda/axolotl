@@ -15,7 +15,7 @@ from axolotl.models.eagle import EaModel
 
 set_seed(0)
 
-app = typer.Typer()
+app = typer.Typer(pretty_exceptions_show_locals=False)
 
 
 def complete_chat (question, tokenizer, model, eos_token_id, pad_token_id, max_new_token):

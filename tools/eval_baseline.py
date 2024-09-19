@@ -14,7 +14,7 @@ import shortuuid
 
 set_seed(0)
 
-app = typer.Typer()
+app = typer.Typer(pretty_exceptions_show_locals=False)
 
 
 def complete_chat (question, tokenizer, model, eos_token_id, pad_token_id, max_new_token):
@@ -163,7 +163,7 @@ def get_model_answers (
 	model = AutoModelForCausalLM.from_pretrained(
 		base_model_path,
 		torch_dtype=torch.float16,
-		device_map='cuda',
+		device_map='auto',
 	)
 	model.eval()
 
