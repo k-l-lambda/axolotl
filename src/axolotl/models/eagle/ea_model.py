@@ -57,7 +57,8 @@ class EaModel(nn.Module):
 
 		low_memory=False
 
-		device = base_model.model.layers[-1].self_attn.q_proj.weight.device
+		#device = base_model.model.layers[-1].self_attn.q_proj.weight.device
+		device = next(base_model.model.layers[-1].parameters()).device
 		if device!=base_model.lm_head.weight.device:
 			self.ea_layer.diff_device = True
 			if not low_memory:

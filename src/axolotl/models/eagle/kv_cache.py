@@ -91,7 +91,8 @@ def initialize_past_key_values(model):
 	devices=[]
 	for i in range(config.num_hidden_layers):
 		try:
-			device = model.model.layers[i].self_attn.q_proj.weight.device
+			#device = model.model.layers[i].self_attn.q_proj.weight.device
+			device = next(model.model.layers[i].parameters()).device
 		except:
 			device=model.layers[i].self_attn.q_proj.weight.device
 		devices.append(device)
