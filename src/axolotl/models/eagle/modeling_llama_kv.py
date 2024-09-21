@@ -27,6 +27,7 @@ from transformers.utils import (
 	replace_return_docstrings,
 )
 from transformers import LlamaConfig
+from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
 
 logger = logging.get_logger(__name__)
 
@@ -103,221 +104,138 @@ import torch
 
 
 class LlamaRMSNorm(nn.Module):
-	"""
-	LlamaRMSNorm is equivalent to T5LayerNorm.
-
-	Args:
-		hidden_size (int): The size of the hidden states.
-		eps (float, optional): A small value to prevent division by zero. Default is 1e-6.
-	"""
-
 	def __init__(self, hidden_size, eps=1e-6):
+		"""
+		LlamaRMSNorm is equivalent to T5LayerNorm
+		"""
 		super().__init__()
 		self.weight = nn.Parameter(torch.ones(hidden_size))
 		self.variance_epsilon = eps
 
 	def forward(self, hidden_states):
-		"""
-		Apply LlamaRMSNorm to the input hidden states.
-
-		Args:
-			hidden_states (torch.Tensor): Input hidden states.
-
-		Returns:
-			torch.Tensor: The normalized and scaled hidden states.
-		"""
 		input_dtype = hidden_states.dtype
 		hidden_states = hidden_states.to(torch.float32)
 		variance = hidden_states.pow(2).mean(-1, keepdim=True)
 		hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
 		return self.weight * hidden_states.to(input_dtype)
 
+	def extra_repr(self):
+		return f"{tuple(self.weight.shape)}, eps={self.variance_epsilon}"
+
+
+#ALL_LAYERNORM_LAYERS.append(LlamaRMSNorm)
+
 
 class LlamaRotaryEmbedding(nn.Module):
-	"""
-	Llama Rotary Positional Embedding Module.
-
-	Args:
-		dim (int): The dimension of the embedding.
-		max_position_embeddings (int, optional): The maximum position for embeddings. Default is 2048.
-		base (int, optional): The base value for rotational encoding. Default is 10000.
-		device (str, optional): The device on which the computation will be performed. Default is None.
-	"""
-
-	def __init__(self, dim, max_position_embeddings=2048, base=10000, device=None):
+	def __init__(
+		self,
+		dim=None,
+		max_position_embeddings=2048,
+		base=10000,
+		device=None,
+		scaling_factor=1.0,
+		rope_type="default",
+		config: Optional[LlamaConfig] = None,
+	):
 		super().__init__()
-
-		self.dim = dim
-		self.max_position_embeddings = max_position_embeddings
-		self.base = base
-		inv_freq = 1.0 / (
-				self.base ** (torch.arange(0, self.dim, 2).float().to(device) / self.dim)
-		)
-		self.register_buffer("inv_freq", inv_freq)
-
-		# Build here to make `torch.jit.trace` work.
-		self._set_cos_sin_cache(
-			seq_len=max_position_embeddings,
-			device=self.inv_freq.device,
-			dtype=torch.get_default_dtype(),
-		)
-
-	def _set_cos_sin_cache(self, seq_len, device, dtype):
-		"""
-		Set the cosine and sine cache for positional embeddings.
-
-		Args:
-			seq_len (int): The sequence length.
-			device (str): The device on which the cache tensors will be stored.
-			dtype: The data type of the cache tensors.
-		"""
-		self.max_seq_len_cached = seq_len
-		t = torch.arange(
-			self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype
-		)
-
-		freqs = torch.einsum("i,j->ij", t, self.inv_freq)
-		# Different from paper, but it uses a different permutation in order to obtain the same calculation
-		emb = torch.cat((freqs, freqs), dim=-1)
-		self.register_buffer(
-			"cos_cached", emb.cos()[None, None, :, :].to(dtype), persistent=False
-		)
-		self.register_buffer(
-			"sin_cached", emb.sin()[None, None, :, :].to(dtype), persistent=False
-		)
-
-	def forward(self, x, seq_len=None):
-		"""
-		Forward pass of the LlamaRotaryEmbedding module.
-
-		Args:
-			x (torch.Tensor): Input tensor of shape [bs, num_attention_heads, seq_len, head_size].
-			seq_len (int): The sequence length. If greater than the cached length, the cache will be updated.
-
-		Returns:
-			tuple: A tuple containing two tensors, the cosine and sine embeddings, both of shape [1, 1, seq_len, dim].
-		"""
-		if seq_len > self.max_seq_len_cached:
-			self._set_cos_sin_cache(seq_len=seq_len, device=x.device, dtype=x.dtype)
-
-		return (
-			self.cos_cached[:, :, :seq_len, ...].to(dtype=x.dtype),
-			self.sin_cached[:, :, :seq_len, ...].to(dtype=x.dtype),
-		)
-
-
-class LlamaLinearScalingRotaryEmbedding(LlamaRotaryEmbedding):
-	"""
-	LlamaRotaryEmbedding extended with linear scaling.
-
-	This class adds linear scaling to LlamaRotaryEmbedding. Credits to the Reddit user /u/kaiokendev.
-
-	Args:
-		dim (int): The dimension of the embedding.
-		max_position_embeddings (int, optional): The maximum number of position embeddings. Default is 2048.
-		base (int, optional): The base value for the rotational embeddings. Default is 10000.
-		device (str or torch.device, optional): The device where the embeddings should be stored. Default is None.
-		scaling_factor (float, optional): The scaling factor for the embeddings. Default is 1.0.
-	"""
-
-	def __init__(
-			self,
-			dim,
-			max_position_embeddings=2048,
-			base=10000,
-			device=None,
-			scaling_factor=1.0,
-	):
-		self.scaling_factor = scaling_factor
-		super().__init__(dim, max_position_embeddings, base, device)
-
-	def _set_cos_sin_cache(self, seq_len, device, dtype):
-		"""
-		Set the cosine and sine cache for the rotary embeddings.
-
-		Args:
-			seq_len (int): The sequence length.
-			device (str or torch.device): The device where the cache should be stored.
-			dtype: The data type for the cache.
-		"""
-		self.max_seq_len_cached = seq_len
-		t = torch.arange(
-			self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype
-		)
-		t = t / self.scaling_factor
-
-		freqs = torch.einsum("i,j->ij", t, self.inv_freq)
-		# Different from paper, but it uses a different permutation in order to obtain the same calculation
-		emb = torch.cat((freqs, freqs), dim=-1)
-		self.register_buffer(
-			"cos_cached", emb.cos()[None, None, :, :].to(dtype), persistent=False
-		)
-		self.register_buffer(
-			"sin_cached", emb.sin()[None, None, :, :].to(dtype), persistent=False
-		)
-
-
-class LlamaDynamicNTKScalingRotaryEmbedding(LlamaRotaryEmbedding):
-	"""
-	LlamaRotaryEmbedding extended with Dynamic NTK scaling.
-
-	Credits to the Reddit users /u/bloc97 and /u/emozilla.
-	"""
-
-	def __init__(
-			self,
-			dim,
-			max_position_embeddings=2048,
-			base=10000,
-			device=None,
-			scaling_factor=1.0,
-	):
-		"""
-		Initialize the LlamaDynamicNTKScalingRotaryEmbedding.
-
-		Args:
-			dim (int): The dimensionality of the embedding.
-			max_position_embeddings (int, optional): Maximum number of position embeddings. Default is 2048.
-			base (int, optional): Base value for scaling calculations. Default is 10000.
-			device: The device to place tensors on. If None, uses the default device.
-			scaling_factor (float, optional): Scaling factor for NTK scaling. Default is 1.0.
-		"""
-		self.scaling_factor = scaling_factor
-		super().__init__(dim, max_position_embeddings, base, device)
-
-	def _set_cos_sin_cache(self, seq_len, device, dtype):
-		"""
-		Set the cached values for cosine and sine.
-
-		Args:
-			seq_len (int): The sequence length.
-			device: The device to place tensors on.
-			dtype: The data type of tensors.
-		"""
-		self.max_seq_len_cached = seq_len
-
-		if seq_len > self.max_position_embeddings:
-			base = self.base * (
-					(self.scaling_factor * seq_len / self.max_position_embeddings)
-					- (self.scaling_factor - 1)
-			) ** (self.dim / (self.dim - 2))
-			inv_freq = 1.0 / (
-					base ** (torch.arange(0, self.dim, 2).float().to(device) / self.dim)
+		# TODO (joao): remove the `if` below, only used for BC
+		self.rope_kwargs = {}
+		if config is None:
+			logger.warning_once(
+				"`LlamaRotaryEmbedding` can now be fully parameterized by passing the model config through the "
+				"`config` argument. All other arguments will be removed in v4.45"
 			)
-			self.register_buffer("inv_freq", inv_freq)
+			self.rope_kwargs = {
+				"rope_type": rope_type,
+				"factor": scaling_factor,
+				"dim": dim,
+				"base": base,
+				"max_position_embeddings": max_position_embeddings,
+			}
+			self.rope_type = rope_type
+			self.max_seq_len_cached = max_position_embeddings
+			self.original_max_seq_len = max_position_embeddings
+		else:
+			# BC: "rope_type" was originally "type"
+			if config.rope_scaling is not None:
+				self.rope_type = config.rope_scaling.get("rope_type", config.rope_scaling.get("type"))
+			else:
+				self.rope_type = "default"
+			self.max_seq_len_cached = config.max_position_embeddings
+			self.original_max_seq_len = config.max_position_embeddings
 
-		t = torch.arange(
-			self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype
-		)
+		self.config = config
+		self.rope_init_fn = ROPE_INIT_FUNCTIONS[self.rope_type]
 
-		freqs = torch.einsum("i,j->ij", t, self.inv_freq)
-		emb = torch.cat((freqs, freqs), dim=-1)
-		self.register_buffer(
-			"cos_cached", emb.cos()[None, None, :, :].to(dtype), persistent=False
-		)
-		self.register_buffer(
-			"sin_cached", emb.sin()[None, None, :, :].to(dtype), persistent=False
-		)
+		inv_freq, self.attention_scaling = self.rope_init_fn(self.config, device, **self.rope_kwargs)
+		self.register_buffer("inv_freq", inv_freq, persistent=False)
+		self.original_inv_freq = self.inv_freq
+
+	def _dynamic_frequency_update(self, position_ids, device):
+		"""
+		dynamic RoPE layers should recompute `inv_freq` in the following situations:
+		1 - growing beyond the cached sequence length (allow scaling)
+		2 - the current sequence length is in the original scale (avoid losing precision with small sequences)
+		"""
+		seq_len = torch.max(position_ids) + 1
+		if seq_len > self.max_seq_len_cached:  # growth
+			inv_freq, self.attention_scaling = self.rope_init_fn(
+				self.config, device, seq_len=seq_len, **self.rope_kwargs
+			)
+			self.register_buffer("inv_freq", inv_freq, persistent=False)  # TODO joao: may break with compilation
+			self.max_seq_len_cached = seq_len
+
+		if seq_len < self.original_max_seq_len and self.max_seq_len_cached > self.original_max_seq_len:  # reset
+			self.register_buffer("inv_freq", self.original_inv_freq, persistent=False)
+			self.max_seq_len_cached = self.original_max_seq_len
+
+	@torch.no_grad()
+	def forward(self, x, position_ids):
+		if "dynamic" in self.rope_type:
+			self._dynamic_frequency_update(position_ids, device=x.device)
+
+		# Core RoPE block
+		inv_freq_expanded = self.inv_freq[None, :, None].float().expand(position_ids.shape[0], -1, 1)
+		position_ids_expanded = position_ids[:, None, :].float()
+		# Force float32 (see https://github.com/huggingface/transformers/pull/29285)
+		device_type = x.device.type
+		device_type = device_type if isinstance(device_type, str) and device_type != "mps" else "cpu"
+		with torch.autocast(device_type=device_type, enabled=False):
+			freqs = (inv_freq_expanded.float() @ position_ids_expanded.float()).transpose(1, 2)
+			emb = torch.cat((freqs, freqs), dim=-1)
+			cos = emb.cos()
+			sin = emb.sin()
+
+		# Advanced RoPE types (e.g. yarn) apply a post-processing scaling factor, equivalent to scaling attention
+		cos = cos * self.attention_scaling
+		sin = sin * self.attention_scaling
+
+		return cos.to(dtype=x.dtype), sin.to(dtype=x.dtype)
+
+
+#class LlamaLinearScalingRotaryEmbedding(LlamaRotaryEmbedding):
+#    """LlamaRotaryEmbedding extended with linear scaling. Credits to the Reddit user /u/kaiokendev"""
+#
+#    def __init__(self, *args, **kwargs):
+#        logger.warning_once(
+#            "`LlamaLinearScalingRotaryEmbedding` is deprecated an will be removed in v4.45. Please use "
+#            "`LlamaRotaryEmbedding`, which now also does linear scaling (simply pass the model config to __init__)."
+#        )
+#        kwargs["rope_type"] = "linear"
+#        super().__init__(*args, **kwargs)
+#
+#
+#class LlamaDynamicNTKScalingRotaryEmbedding(LlamaRotaryEmbedding):
+#    """LlamaRotaryEmbedding extended with Dynamic NTK scaling. Credits to the Reddit users /u/bloc97 and /u/emozilla"""
+#
+#    def __init__(self, *args, **kwargs):
+#        logger.warning_once(
+#            "`LlamaDynamicNTKScalingRotaryEmbedding` is deprecated an will be removed in v4.45. Please use "
+#            "`LlamaRotaryEmbedding`, which now also does dynamic ntk scaling (simply pass the model config to "
+#            "__init__)."
+#        )
+#        kwargs["rope_type"] = "dynamic"
+#        super().__init__(*args, **kwargs)
 
 
 def rotate_half(x):
@@ -335,24 +253,28 @@ def rotate_half(x):
 	return torch.cat((-x2, x1), dim=-1)
 
 
-def apply_rotary_pos_emb(q, k, cos, sin, position_ids):
-	"""
-	Apply rotary position embeddings to query and key tensors.
+def apply_rotary_pos_emb(q, k, cos, sin, position_ids=None, unsqueeze_dim=1):
+	"""Applies Rotary Position Embedding to the query and key tensors.
 
 	Args:
-		q (torch.Tensor): Query tensor.
-		k (torch.Tensor): Key tensor.
-		cos (torch.Tensor): Cosine values.
-		sin (torch.Tensor): Sine values.
-		position_ids (torch.Tensor): Position IDs.
-
+		q (`torch.Tensor`): The query tensor.
+		k (`torch.Tensor`): The key tensor.
+		cos (`torch.Tensor`): The cosine part of the rotary embedding.
+		sin (`torch.Tensor`): The sine part of the rotary embedding.
+		position_ids (`torch.Tensor`, *optional*):
+			Deprecated and unused.
+		unsqueeze_dim (`int`, *optional*, defaults to 1):
+			The 'unsqueeze_dim' argument specifies the dimension along which to unsqueeze cos[position_ids] and
+			sin[position_ids] so that they can be properly broadcasted to the dimensions of q and k. For example, note
+			that cos[position_ids] and sin[position_ids] have the shape [batch_size, seq_len, head_dim]. Then, if q and
+			k have the shape [batch_size, heads, seq_len, head_dim], then setting unsqueeze_dim=1 makes
+			cos[position_ids] and sin[position_ids] broadcastable to the shapes of q and k. Similarly, if q and k have
+			the shape [batch_size, seq_len, heads, head_dim], then set unsqueeze_dim=2.
 	Returns:
-		torch.Tensor: Query and key tensors with rotary position embeddings applied.
+		`tuple(torch.Tensor)` comprising of the query and key tensors rotated using the Rotary Position Embedding.
 	"""
-	cos = cos.squeeze(1).squeeze(0)
-	sin = sin.squeeze(1).squeeze(0)
-	cos = cos[position_ids].unsqueeze(1)
-	sin = sin[position_ids].unsqueeze(1)
+	cos = cos.unsqueeze(unsqueeze_dim)
+	sin = sin.unsqueeze(unsqueeze_dim)
 	q_embed = (q * cos) + (rotate_half(q) * sin)
 	k_embed = (k * cos) + (rotate_half(k) * sin)
 	return q_embed, k_embed
@@ -462,9 +384,18 @@ class LlamaAttention(nn.Module):
 
 	"""
 
-	def __init__(self, config: LlamaConfig):
+	def __init__(self, config: LlamaConfig, layer_idx: Optional[int] = None):
 		super().__init__()
 		self.config = config
+		self.layer_idx = layer_idx
+		if layer_idx is None:
+			logger.warning_once(
+				f"Instantiating {self.__class__.__name__} without passing a `layer_idx` is not recommended and will "
+				"lead to errors during the forward call if caching is used. Please make sure to provide a `layer_idx` "
+				"when creating this class."
+			)
+
+		self.attention_dropout = config.attention_dropout
 		self.hidden_size = config.hidden_size
 		self.num_heads = config.num_attention_heads
 		self.head_dim = self.hidden_size // self.num_heads
@@ -472,6 +403,8 @@ class LlamaAttention(nn.Module):
 		self.num_key_value_groups = self.num_heads // self.num_key_value_heads
 		self.pretraining_tp = config.pretraining_tp
 		self.max_position_embeddings = config.max_position_embeddings
+		self.rope_theta = config.rope_theta
+		self.is_causal = True
 
 		if (self.head_dim * self.num_heads) != self.hidden_size:
 			raise ValueError(
@@ -479,41 +412,41 @@ class LlamaAttention(nn.Module):
 				f" and `num_heads`: {self.num_heads})."
 			)
 		self.q_proj = nn.Linear(
-			self.hidden_size, self.num_heads * self.head_dim, bias=False
+			self.hidden_size, self.num_heads * self.head_dim, bias=config.attention_bias
 		)
 		self.k_proj = nn.Linear(
-			self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False
+			self.hidden_size, self.num_key_value_heads * self.head_dim, bias=config.attention_bias
 		)
 		self.v_proj = nn.Linear(
-			self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False
+			self.hidden_size, self.num_key_value_heads * self.head_dim, bias=config.attention_bias
 		)
 		self.o_proj = nn.Linear(
-			self.num_heads * self.head_dim, self.hidden_size, bias=False
+			self.num_heads * self.head_dim, self.hidden_size, bias=config.attention_bias
 		)
-		self._init_rope()
+		self.rotary_emb = LlamaRotaryEmbedding(config=self.config)
 
-	def _init_rope(self):
-		if self.config.rope_scaling is None:
-			self.rotary_emb = LlamaRotaryEmbedding(
-				self.head_dim, max_position_embeddings=self.max_position_embeddings,base=self.config.rope_theta
-			)
-		else:
-			scaling_type = self.config.rope_scaling.get("type", "linear")
-			scaling_factor = self.config.rope_scaling["factor"]
-			if scaling_type == "linear":
-				self.rotary_emb = LlamaLinearScalingRotaryEmbedding(
-					self.head_dim,
-					max_position_embeddings=self.max_position_embeddings,
-					scaling_factor=scaling_factor,
-				)
-			elif scaling_type == "dynamic":
-				self.rotary_emb = LlamaDynamicNTKScalingRotaryEmbedding(
-					self.head_dim,
-					max_position_embeddings=self.max_position_embeddings,
-					scaling_factor=scaling_factor,
-				)
-			else:
-				raise ValueError(f"Unknown RoPE scaling type {scaling_type}")
+	#def _init_rope(self):
+	#	if self.config.rope_scaling is None:
+	#		self.rotary_emb = LlamaRotaryEmbedding(
+	#			self.head_dim, max_position_embeddings=self.max_position_embeddings,base=self.config.rope_theta
+	#		)
+	#	else:
+	#		scaling_type = self.config.rope_scaling.get("type", "linear")
+	#		scaling_factor = self.config.rope_scaling["factor"]
+	#		if scaling_type == "linear":
+	#			self.rotary_emb = LlamaLinearScalingRotaryEmbedding(
+	#				self.head_dim,
+	#				max_position_embeddings=self.max_position_embeddings,
+	#				scaling_factor=scaling_factor,
+	#			)
+	#		elif scaling_type == "dynamic":
+	#			self.rotary_emb = LlamaDynamicNTKScalingRotaryEmbedding(
+	#				self.head_dim,
+	#				max_position_embeddings=self.max_position_embeddings,
+	#				scaling_factor=scaling_factor,
+	#			)
+	#		else:
+	#			raise ValueError(f"Unknown RoPE scaling type {scaling_type}")
 
 	def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
 		return (
@@ -530,35 +463,27 @@ class LlamaAttention(nn.Module):
 			past_key_value: Optional[Tuple[torch.Tensor]] = None,
 			output_attentions: bool = False,
 			use_cache: bool = False,
+			cache_position: Optional[torch.LongTensor] = None,
+			position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.45
+			**kwargs,
 	) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
 		bsz, q_len, _ = hidden_states.size()
 
-		if self.pretraining_tp > 1:
-			key_value_slicing = (
-										self.num_key_value_heads * self.head_dim
-								) // self.pretraining_tp
+		if self.config.pretraining_tp > 1:
+			key_value_slicing = (self.num_key_value_heads * self.head_dim) // self.config.pretraining_tp
 			query_slices = self.q_proj.weight.split(
-				(self.num_heads * self.head_dim) // self.pretraining_tp, dim=0
+				(self.num_heads * self.head_dim) // self.config.pretraining_tp, dim=0
 			)
 			key_slices = self.k_proj.weight.split(key_value_slicing, dim=0)
 			value_slices = self.v_proj.weight.split(key_value_slicing, dim=0)
 
-			query_states = [
-				F.linear(hidden_states, query_slices[i])
-				for i in range(self.pretraining_tp)
-			]
+			query_states = [F.linear(hidden_states, query_slices[i]) for i in range(self.config.pretraining_tp)]
 			query_states = torch.cat(query_states, dim=-1)
 
-			key_states = [
-				F.linear(hidden_states, key_slices[i])
-				for i in range(self.pretraining_tp)
-			]
+			key_states = [F.linear(hidden_states, key_slices[i]) for i in range(self.config.pretraining_tp)]
 			key_states = torch.cat(key_states, dim=-1)
 
-			value_states = [
-				F.linear(hidden_states, value_slices[i])
-				for i in range(self.pretraining_tp)
-			]
+			value_states = [F.linear(hidden_states, value_slices[i]) for i in range(self.config.pretraining_tp)]
 			value_states = torch.cat(value_states, dim=-1)
 
 		else:
@@ -566,23 +491,21 @@ class LlamaAttention(nn.Module):
 			key_states = self.k_proj(hidden_states)
 			value_states = self.v_proj(hidden_states)
 
-		query_states = query_states.view(
-			bsz, q_len, self.num_heads, self.head_dim
-		).transpose(1, 2)
-		key_states = key_states.view(
-			bsz, q_len, self.num_key_value_heads, self.head_dim
-		).transpose(1, 2)
-		value_states = value_states.view(
-			bsz, q_len, self.num_key_value_heads, self.head_dim
-		).transpose(1, 2)
+		query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
+		key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+		value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
 
-		kv_seq_len = key_states.shape[-2]
-		if past_key_value is not None:
-			kv_seq_len += past_key_value[0].shape[-2]
-		cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-		query_states, key_states = apply_rotary_pos_emb(
-			query_states, key_states, cos, sin, position_ids
-		)
+		if position_embeddings is None:
+			logger.warning_once(
+				"The attention layers in this model are transitioning from computing the RoPE embeddings internally "
+				"through `position_ids` (2D tensor with the indexes of the tokens), to using externally computed "
+				"`position_embeddings` (Tuple of tensors, containing cos and sin). In v4.45 `position_ids` will be "
+				"removed and `position_embeddings` will be mandatory."
+			)
+			cos, sin = self.rotary_emb(value_states, position_ids)
+		else:
+			cos, sin = position_embeddings
+		query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
 
 		# [MODIFIED] Using KVCache mechanism for preallocated GPU memory optimization
 		# past_key_value is utilized to leverage previously computed key and value states.
@@ -601,23 +524,13 @@ class LlamaAttention(nn.Module):
 			query_states, key_states.transpose(2, 3)
 		) / math.sqrt(self.head_dim)
 
-		if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
-			raise ValueError(
-				f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
-				f" {attn_weights.size()}"
-			)
-
-		if attention_mask is not None:
-			if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
-				raise ValueError(
-					f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
-				)
-			attn_weights = attn_weights + attention_mask
+		if attention_mask is not None:  # no matter the length, we just slice it
+			causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
+			attn_weights = attn_weights + causal_mask
 
 		# upcast attention to fp32
-		attn_weights = nn.functional.softmax(
-			attn_weights, dim=-1, dtype=torch.float32
-		).to(query_states.dtype)
+		attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
+		attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
 		attn_output = torch.matmul(attn_weights, value_states)
 
 		if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
@@ -627,21 +540,13 @@ class LlamaAttention(nn.Module):
 			)
 
 		attn_output = attn_output.transpose(1, 2).contiguous()
-		attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
 
-		if self.pretraining_tp > 1:
-			attn_output = attn_output.split(
-				self.hidden_size // self.pretraining_tp, dim=2
-			)
-			o_proj_slices = self.o_proj.weight.split(
-				self.hidden_size // self.pretraining_tp, dim=1
-			)
-			attn_output = sum(
-				[
-					F.linear(attn_output[i], o_proj_slices[i])
-					for i in range(self.pretraining_tp)
-				]
-			)
+		attn_output = attn_output.reshape(bsz, q_len, -1)
+
+		if self.config.pretraining_tp > 1:
+			attn_output = attn_output.split(self.hidden_size // self.config.pretraining_tp, dim=2)
+			o_proj_slices = self.o_proj.weight.split(self.hidden_size // self.config.pretraining_tp, dim=1)
+			attn_output = sum([F.linear(attn_output[i], o_proj_slices[i]) for i in range(self.config.pretraining_tp)])
 		else:
 			attn_output = self.o_proj(attn_output)
 
@@ -684,6 +589,9 @@ class LlamaDecoderLayer(nn.Module):
 			past_key_value: Optional[Tuple[torch.Tensor]] = None,
 			output_attentions: Optional[bool] = False,
 			use_cache: Optional[bool] = False,
+			cache_position: Optional[torch.LongTensor] = None,
+			position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.45
+			**kwargs,
 	) -> Tuple[
 		torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]
 	]:
@@ -721,6 +629,9 @@ class LlamaDecoderLayer(nn.Module):
 			past_key_value=past_key_value,
 			output_attentions=output_attentions,
 			use_cache=use_cache,
+			cache_position=cache_position,
+			position_embeddings=position_embeddings,
+			**kwargs,
 		)
 		hidden_states = residual + hidden_states
 
@@ -873,6 +784,7 @@ class LlamaModel(LlamaPreTrainedModel):
 			[LlamaDecoderLayer(config) for _ in range(config.num_hidden_layers)]
 		)
 		self.norm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+		self.rotary_emb = LlamaRotaryEmbedding(config=config)
 
 		self.gradient_checkpointing = False
 		# Initialize weights and apply final processing
@@ -933,6 +845,7 @@ class LlamaModel(LlamaPreTrainedModel):
 			output_attentions: Optional[bool] = None,
 			output_hidden_states: Optional[bool] = None,
 			return_dict: Optional[bool] = None,
+			cache_position: Optional[torch.LongTensor] = None,
 	) -> Union[Tuple, BaseModelOutputWithPast]:
 		output_attentions = (
 			output_attentions
@@ -1008,6 +921,9 @@ class LlamaModel(LlamaPreTrainedModel):
 				)
 				use_cache = False
 
+		# create position embeddings to be shared across the decoder layers
+		position_embeddings = self.rotary_emb(hidden_states, position_ids)
+
 		# decoder layers
 		all_hidden_states = () if output_hidden_states else None
 		all_self_attns = () if output_attentions else None
@@ -1047,6 +963,8 @@ class LlamaModel(LlamaPreTrainedModel):
 					past_key_value=past_key_value,
 					output_attentions=output_attentions,
 					use_cache=use_cache,
+					cache_position=cache_position,
+					position_embeddings=position_embeddings,
 				)
 
 			hidden_states = layer_outputs[0]
