@@ -18,7 +18,7 @@ set_seed(0)
 app = typer.Typer(pretty_exceptions_show_locals=False)
 
 
-def complete_chat (question, tokenizer, model, eos_token_id, pad_token_id, max_new_token):
+def complete_chat (question, tokenizer, model, eos_token_id, pad_token_id, max_new_token, pad_head_zero=False):
 	messages = []
 	turns = []
 	taus = []
@@ -59,6 +59,7 @@ def complete_chat (question, tokenizer, model, eos_token_id, pad_token_id, max_n
 			max_new_tokens=max_new_token,
 			max_length=8192,
 			profiler=profiler,
+			pad_head_zero=pad_head_zero,
 		)
 		torch.cuda.synchronize()
 		total_time = time.time() - start_time
@@ -105,7 +106,7 @@ def complete_chat (question, tokenizer, model, eos_token_id, pad_token_id, max_n
 	return turns, taus, new_tokens, wall_time, profiler
 
 
-def complete_instruction (question, tokenizer, model, eos_token_id, pad_token_id, max_new_token):
+def complete_instruction (question, tokenizer, model, eos_token_id, pad_token_id, max_new_token, pad_head_zero=False):
 	turns = []
 	turns = []
 	taus = []
@@ -132,6 +133,7 @@ def complete_instruction (question, tokenizer, model, eos_token_id, pad_token_id
 		max_length=8192,
 		profiler=profiler,
 		stop_ids=stop_ids,
+		pad_head_zero=pad_head_zero,
 	)
 	torch.cuda.synchronize()
 	total_time = time.time() - start_time
@@ -172,6 +174,7 @@ def get_model_answers(
 	depth,
 	top_k,
 	by_instruction,
+	pad_head_zero=False,
 ):
 	model = EaModel.from_pretrained(
 		base_model_path=base_model_path,
@@ -217,6 +220,7 @@ def get_model_answers(
 				eos_token_id,
 				pad_token_id,
 				max_new_token,
+				pad_head_zero=pad_head_zero,
 			)
 
 			# torch.cuda.empty_cache()
@@ -258,6 +262,7 @@ def run_eval(
 	depth: Annotated[int, typer.Option('--depth', help='Tree attention depth.')] = 5,
 	top_k: Annotated[int, typer.Option('--top-k', help='K of tree attention top K choices.')] = 10,
 	by_instruction: Annotated[bool, typer.Option('--instruct', help='Use instruction data against chat.')] = False,
+	pad_head_zero: Annotated[bool, typer.Option('--pad-head-zero', help='Add a zero state on the head of KV cache.')] = False,
 ):
 	model_id = base_model_path.split('/')[-1]
 
@@ -293,6 +298,7 @@ def run_eval(
 			depth=depth,
 			top_k=top_k,
 			by_instruction=by_instruction,
+			pad_head_zero=pad_head_zero,
 		)
 	)
 

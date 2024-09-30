@@ -209,6 +209,7 @@ class EaModel(nn.Module):
 			is_llama3=False,
 			profiler=None,
 			stop_ids=None,
+			pad_head_zero=False,
 	):
 		if is_llama3:
 			stop_token_id = self.tokenizer.convert_tokens_to_ids("<|eot_id|>")
@@ -247,7 +248,7 @@ class EaModel(nn.Module):
 		input_len = input_ids.shape[1]
 		reset_tree_mode(self)
 		draft_tokens, retrieve_indices,tree_mask,tree_position_ids, logits, hidden_state, sample_token = initialize_tree(
-			input_ids, self, past_key_values, logits_processor, profiler=profiler,
+			input_ids, self, past_key_values, logits_processor, profiler=profiler, pad_head_zero=pad_head_zero,
 		)
 		new_token = 0
 
@@ -292,6 +293,7 @@ class EaModel(nn.Module):
 				hidden_state_new,
 				sample_p,
 				profiler=profiler,
+				pad_head_zero=pad_head_zero,
 			)
 
 			new_ids = input_ids[0, input_len:].tolist()
@@ -405,7 +407,7 @@ class EaModel(nn.Module):
 			max_length=2048,
 			log=False,
 			is_llama3=False,
-
+			pad_head_zero=False,
 	):
 		if is_llama3:
 			stop_token_id = self.tokenizer.convert_tokens_to_ids("<|eot_id|>")
@@ -444,7 +446,7 @@ class EaModel(nn.Module):
 		input_len = input_ids.shape[1]
 		reset_tree_mode(self)
 		draft_tokens, retrieve_indices,tree_mask,tree_position_ids, logits, hidden_state, sample_token = initialize_tree(
-			input_ids, self, past_key_values, logits_processor
+			input_ids, self, past_key_values, logits_processor, pad_head_zero=pad_head_zero,
 		)
 		new_token = 0
 

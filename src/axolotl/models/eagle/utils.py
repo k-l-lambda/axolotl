@@ -229,7 +229,7 @@ def initialize_tree0(input_ids, model, past_key_values, logits_processor):
 	#     return draft_tokens, retrieve_indices,tree_mask,tree_position_ids, hidden_states, token
 	return draft_tokens, retrieve_indices,tree_mask,tree_position_ids, logits, hidden_state, sample_token
 
-def initialize_tree(input_ids, model, past_key_values, logits_processor, profiler=None):
+def initialize_tree(input_ids, model, past_key_values, logits_processor, profiler=None, pad_head_zero=False):
 	torch.cuda.synchronize()
 	t0 = time.time()
 
@@ -253,7 +253,7 @@ def initialize_tree(input_ids, model, past_key_values, logits_processor, profile
 	input_ids = torch.cat((input_ids, token.to(input_ids.device)), dim=1)
 	# Clone the output hidden states
 
-	draft_tokens, retrieve_indices,tree_mask,tree_position_ids = model.ea_layer.topK_genrate(hidden_states, input_ids, model.base_model.lm_head,logits_processor, profiler=profiler)
+	draft_tokens, retrieve_indices,tree_mask,tree_position_ids = model.ea_layer.topK_genrate(hidden_states, input_ids, model.base_model.lm_head,logits_processor, profiler=profiler, pad_head_zero=pad_head_zero)
 	return draft_tokens, retrieve_indices,tree_mask,tree_position_ids, orig, hidden_states, token
 
 
@@ -435,6 +435,7 @@ def update_inference_inputs(
 		hidden_state_new,
 		sample_p,
 		profiler=None,
+		pad_head_zero=False,
 ):
 	prev_input_len = input_ids.shape[1]
 	# Map the best candidate indices to the original indices in the sequence
@@ -471,7 +472,7 @@ def update_inference_inputs(
 	# hidden_state = torch.cat((hidden_state, accept_hidden_state_new), dim=1)
 	draft_tokens, retrieve_indices,tree_mask,tree_position_ids = model.ea_layer.topK_genrate(accept_hidden_state_new,
 											  input_ids=torch.cat((input_ids, token.to(input_ids.device)), dim=1),
-											  head=model.base_model.lm_head,logits_processor=logits_processor, profiler=profiler)
+											  head=model.base_model.lm_head,logits_processor=logits_processor, profiler=profiler, reduce_kv=pad_head_zero)
 
 
 	new_token += accept_length + 1

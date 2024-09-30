@@ -652,7 +652,7 @@ class Model(nn.Module):
 		self.stable_kv = None
 
 	@torch.no_grad()
-	def topK_genrate(self, hidden_states, input_ids, head, logits_processor, profiler=None):
+	def topK_genrate(self, hidden_states, input_ids, head, logits_processor, profiler=None, pad_head_zero=False, reduce_kv=False):
 
 		input_ids = input_ids.to(hidden_states.device)
 		total_tokens = self.total_tokens
@@ -678,10 +678,20 @@ class Model(nn.Module):
 
 		if hasattr(self, "stable_kv") and self.stable_kv is not None:
 			kv_len = self.stable_kv[0][0].shape[2]
+			if reduce_kv:
+				kv_len -= 1
 			out_hidden, past_key_values = self(hidden_states, input_ids=input_ids[:, kv_len:],
 											   past_key_values=self.stable_kv, use_cache=True)
 		else:
 			out_hidden, past_key_values = self(hidden_states, input_ids=input_ids, use_cache=True)
+
+		if pad_head_zero:
+			print(f'{len(past_key_values)=}, {len(past_key_values[0])=}')
+			pk = F.pad(past_key_values[0][0], pad=(0, 0, 1, 0), mode='constant', value=0)
+			pv = F.pad(past_key_values[0][1], pad=(0, 0, 1, 0), mode='constant', value=0)
+			past_key_values = ([pk, pv],)
+			print('past_key_values.after pad:', past_key_values[0][0].shape)
+
 
 		if profiler is not None:
 			torch.cuda.synchronize()
