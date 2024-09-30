@@ -686,11 +686,11 @@ class Model(nn.Module):
 			out_hidden, past_key_values = self(hidden_states, input_ids=input_ids, use_cache=True)
 
 		if pad_head_zero:
-			print(f'{len(past_key_values)=}, {len(past_key_values[0])=}')
+			#print(f'{len(past_key_values)=}, {len(past_key_values[0])=}')
 			pk = F.pad(past_key_values[0][0], pad=(0, 0, 1, 0), mode='constant', value=0)
 			pv = F.pad(past_key_values[0][1], pad=(0, 0, 1, 0), mode='constant', value=0)
 			past_key_values = ([pk, pv],)
-			print('past_key_values.after pad:', past_key_values[0][0].shape)
+			#print('past_key_values.after pad:', past_key_values[0][0].shape)
 
 
 		if profiler is not None:
