@@ -246,6 +246,7 @@ class LlamaAttention(nn.Module):
 			past_key_value: Optional[Tuple[torch.Tensor]] = None,
 			output_attentions: bool = False,
 			use_cache: bool = False,
+			zero_head=False,
 	) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
 		bsz, q_len, _ = hidden_states.size()
 
@@ -270,6 +271,11 @@ class LlamaAttention(nn.Module):
 			query_states = self.q_proj(hidden_states)
 			key_states = self.k_proj(hidden_states)
 			value_states = self.v_proj(hidden_states)
+
+		if zero_head:
+			query_states[:, 0] = 0
+			key_states[:, 0] = 0
+			value_states[:, 0] = 0
 
 		query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
 		key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
@@ -403,6 +409,7 @@ class LlamaDecoderLayer(nn.Module):
 			past_key_value: Optional[Tuple[torch.Tensor]] = None,
 			output_attentions: Optional[bool] = False,
 			use_cache: Optional[bool] = False,
+			zero_head=False,
 	) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
 		"""
 		Args:
@@ -431,6 +438,7 @@ class LlamaDecoderLayer(nn.Module):
 			past_key_value=past_key_value,
 			output_attentions=output_attentions,
 			use_cache=use_cache,
+			zero_head=zero_head,
 		)
 		hidden_states = residual + hidden_states
 
@@ -562,7 +570,8 @@ class Model(nn.Module):
 			output_attentions: Optional[bool] = None,
 			output_hidden_states: Optional[bool] = None,
 			return_dict: Optional[bool] = None,
-			std=None
+			std=None,
+			zero_head=False,
 	):
 		batch_size, seq_length, _ = hidden_states.shape
 		seq_length_with_past = seq_length
@@ -636,6 +645,7 @@ class Model(nn.Module):
 					past_key_value=past_key_value,
 					output_attentions=output_attentions,
 					use_cache=use_cache,
+					zero_head=zero_head,
 				)
 
 			hidden_states = layer_outputs[0]
@@ -683,14 +693,17 @@ class Model(nn.Module):
 			out_hidden, past_key_values = self(hidden_states, input_ids=input_ids[:, kv_len:],
 											   past_key_values=self.stable_kv, use_cache=True)
 		else:
-			out_hidden, past_key_values = self(hidden_states, input_ids=input_ids, use_cache=True)
+			if pad_head_zero:
+				hidden_states = torch.cat([hidden_states[:, -1:], hidden_states], dim=1)
+				pad_input_ids = torch.cat([torch.tensor([[128000]], dtype=input_ids.dtype, device=input_ids.device), input_ids], dim=1)
+			else:
+				pad_input_ids = input_ids
+			out_hidden, past_key_values = self(hidden_states, input_ids=pad_input_ids, use_cache=True, zero_head=pad_head_zero)
 
-		if pad_head_zero:
-			#print(f'{len(past_key_values)=}, {len(past_key_values[0])=}')
-			pk = F.pad(past_key_values[0][0], pad=(0, 0, 1, 0), mode='constant', value=0)
-			pv = F.pad(past_key_values[0][1], pad=(0, 0, 1, 0), mode='constant', value=0)
-			past_key_values = ([pk, pv],)
-			#print('past_key_values.after pad:', past_key_values[0][0].shape)
+		#if pad_head_zero:
+		#	pk = F.pad(past_key_values[0][0], pad=(0, 0, 1, 0), mode='constant', value=0)
+		#	pv = F.pad(past_key_values[0][1], pad=(0, 0, 1, 0), mode='constant', value=0)
+		#	past_key_values = ([pk, pv],)
 
 
 		if profiler is not None:
