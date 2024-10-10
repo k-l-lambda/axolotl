@@ -268,9 +268,12 @@ class LlamaAttention(nn.Module):
 			value_states = torch.cat(value_states, dim=-1)
 
 		else:
-			query_states = self.q_proj(hidden_states)
-			key_states = self.k_proj(hidden_states)
-			value_states = self.v_proj(hidden_states)
+			#query_states = self.q_proj(hidden_states)
+			#key_states = self.k_proj(hidden_states)
+			#value_states = self.v_proj(hidden_states)
+			qkv_proj = torch.cat([self.q_proj.weight, self.k_proj.weight, self.v_proj.weight], dim=-2)
+			qkv_states = F.linear(hidden_states, qkv_proj)
+			query_states, key_states, value_states = qkv_states.split([self.num_heads * self.head_dim, self.num_key_value_heads * self.head_dim, self.num_key_value_heads * self.head_dim], dim=-1)
 
 		if zero_head:
 			query_states[:, 0] = 0
@@ -281,11 +284,18 @@ class LlamaAttention(nn.Module):
 		key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
 		value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
 
+		torch.save(query_states[:, :, -1].reshape(1, -1), './tensor-eagle/q.pt')
+		torch.save(key_states[:, :, -1].reshape(1, -1), './tensor-eagle/k.pt')
+		torch.save(value_states[:, :, -1].reshape(1, -1), './tensor-eagle/v.pt')
+
 		kv_seq_len = key_states.shape[-2]
 		if past_key_value is not None:
 			kv_seq_len += past_key_value[0].shape[-2]
 		cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
 		query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+
+		torch.save(query_states[:, :, -1].reshape(1, -1), './tensor-eagle/qp.pt')
+		torch.save(key_states[:, :, -1].reshape(1, -1), './tensor-eagle/kp.pt')
 
 		if past_key_value is not None:
 			# reuse k, v, self_attention
@@ -322,6 +332,7 @@ class LlamaAttention(nn.Module):
 				f"`attn_output` should be of size {(bsz, self.num_heads, q_len, self.head_dim)}, but is"
 				f" {attn_output.size()}"
 			)
+		torch.save(attn_output[:, :, -1].reshape(1, -1), './tensor-eagle/attn_output1.pt')
 
 		attn_output = attn_output.transpose(1, 2).contiguous()
 		attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
@@ -332,6 +343,8 @@ class LlamaAttention(nn.Module):
 			attn_output = sum([F.linear(attn_output[i], o_proj_slices[i]) for i in range(self.config.pretraining_tp)])
 		else:
 			attn_output = self.o_proj(attn_output)
+
+		torch.save(attn_output[:, -1].reshape(1, -1), './tensor-eagle/attn_output2.pt')
 
 		if not output_attentions:
 			attn_weights = None
@@ -441,12 +454,16 @@ class LlamaDecoderLayer(nn.Module):
 			zero_head=zero_head,
 		)
 		hidden_states = residual + hidden_states
+		torch.save(hidden_states[:, -1], './tensor-eagle/hs3.pt')
 
 		# Fully Connected
 		residual = hidden_states
 		hidden_states = self.post_attention_layernorm(hidden_states)
+		torch.save(hidden_states[:, -1], './tensor-eagle/hs4.pt')
 		hidden_states = self.mlp(hidden_states)
+		torch.save(hidden_states[:, -1], './tensor-eagle/hs5.pt')
 		hidden_states = residual + hidden_states
+		torch.save(hidden_states[:, -1], './tensor-eagle/hs6.pt')
 
 		outputs = (hidden_states,)
 
@@ -577,9 +594,12 @@ class Model(nn.Module):
 		seq_length_with_past = seq_length
 		past_key_values_length = 0
 
+		torch.save(hidden_states[:, -1], './tensor-eagle/hs1.pt')
+
 		with torch.no_grad():
 			inputs_embeds = self.embed_tokens(input_ids)
 			# inputs_embeds = inputs_embeds.detach()
+		torch.save(inputs_embeds[:, -1], './tensor-eagle/embeds.pt')
 
 		# if std is not None:
 		#     noise = torch.randn(inputs_embeds.size(),device=inputs_embeds.device) * std
@@ -611,7 +631,40 @@ class Model(nn.Module):
 
 		# hidden_states=self.act(self.fc(torch.cat((inputs_embeds,hidden_states),dim=-1)))
 		inputs_embeds = inputs_embeds.to(hidden_states.dtype)
-		hidden_states = self.fc(torch.cat((inputs_embeds, hidden_states), dim=-1))
+		em_hs1 = torch.cat((inputs_embeds, hidden_states), dim=-1)
+		torch.save(em_hs1[:, -1], './tensor-eagle/em_hs1.pt')
+		hidden_states = self.fc(em_hs1)
+
+		#hs2_p = F.linear(em_hs1, self.fc.weight)
+		#torch.save(hs2_p[:, -1], './tensor-eagle/hs2_p.pt')
+		#print(f'{(hidden_states - hs2_p).norm()=}')
+		print(f'{hidden_states[0, -1, :4]=}')
+
+		#print('fc.bias:', self.fc.bias)
+		torch.save(self.fc.weight, './tensor-eagle/fc.pt')
+
+		torch.save(hidden_states[:, -1], './tensor-eagle/hs2.pt')
+
+		_em_hs1 = torch.load('/root/work/axolotl/tests/tensor-eagle/em_hs1.pt')
+		fcw = torch.load('/root/work/axolotl/tests/tensor-eagle/fc.pt')
+		hs2 = torch.load('/root/work/axolotl/tests/tensor-eagle/hs2.pt')
+		print(f'{(_em_hs1 - em_hs1[:, -1]).norm()=}')
+		print(f'{(fcw - self.fc.weight).norm()=}')
+		print(f'{(hs2 - hidden_states[:, -1]).norm()=}')
+
+		fc = torch.nn.Linear(8192, 4096, bias=False)
+		fc.weight = fcw
+		hs2_p = fc(_em_hs1)
+		hs2_p2 = self.fc(_em_hs1)
+		hs2_p3 = self.fc(em_hs1)
+
+		print(f'{hs2[0, :4]=}')
+		print(f'{hs2_p[0, :4]=}')
+		print(f'{hs2_p2[0, :4]=}')
+		print(f'{hs2_p3[0, -1, :4]=}')
+		print(f'{(hs2 - hs2_p).norm()=}')
+		print(f'{(hs2 - hs2_p2).norm()=}')
+		print(f'{(hs2 - hs2_p3[0, -1]).norm()=}')
 
 		all_hidden_states = () if output_hidden_states else None
 		next_decoder_cache = () if use_cache else None
@@ -704,6 +757,11 @@ class Model(nn.Module):
 		#	pk = F.pad(past_key_values[0][0], pad=(0, 0, 1, 0), mode='constant', value=0)
 		#	pv = F.pad(past_key_values[0][1], pad=(0, 0, 1, 0), mode='constant', value=0)
 		#	past_key_values = ([pk, pv],)
+
+		print('hidden_states:', hidden_states.shape)
+		#torch.save(out_hidden, 'out_hidden-1.pt')
+		exit(0)
+		print('past_key_values:', past_key_values[0][0].shape, past_key_values[0][1].shape)
 
 
 		if profiler is not None:
