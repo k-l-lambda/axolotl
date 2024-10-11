@@ -717,6 +717,11 @@ class Model(nn.Module):
 			#print(f'{nk.norm()=}, {nv.norm()=}')
 			past_key_values = ([past_key_values[0][0] + nk, past_key_values[0][1] + nv],)
 
+		base_n = len_posi
+		os.makedirs(f'./tensor-eagle/{base_n}/', exist_ok=True)
+
+		torch.save(out_hidden[:, -1], f'./tensor-eagle/{base_n}/hs6.pt')
+
 		#if pad_head_zero:
 		#	pk = F.pad(past_key_values[0][0], pad=(0, 0, 1, 0), mode='constant', value=0)
 		#	pv = F.pad(past_key_values[0][1], pad=(0, 0, 1, 0), mode='constant', value=0)
@@ -763,6 +768,8 @@ class Model(nn.Module):
 
 			out_hidden, past_key_values = self(input_hidden, input_ids=input_ids, past_key_values=past_key_values,
 											   position_ids=position_ids, use_cache=True)
+
+			torch.save(out_hidden[0], f'./tensor-eagle/{base_n}/hs6-{len_posi}.pt')
 
 			if profiler is not None:
 				torch.cuda.synchronize()
@@ -830,11 +837,11 @@ class Model(nn.Module):
 		draft_tokens = torch.cat((sample_token, draft_tokens), dim=0)
 
 		draft_parents = torch.cat(parents_list, dim=0)[top_scores_index // top_k].long()
-		#print(f'{scores_list.shape=}, {ss_token_list.shape=}, {draft_parents.shape=}')
-		#os.makedirs(f'./tensor-eagle/{len_posi}/', exist_ok=True)
-		#torch.save(scores_list, f'./tensor-eagle/{len_posi}/scores_list.pt')
-		#torch.save(ss_token_list, f'./tensor-eagle/{len_posi}/ss_token_list.pt')
-		#torch.save(draft_parents, f'./tensor-eagle/{len_posi}/draft_parents.pt')
+		print(f'{scores_list.shape=}, {ss_token_list.shape=}, {draft_parents.shape=}')
+		os.makedirs(f'./tensor-eagle/{len_posi}/', exist_ok=True)
+		torch.save(scores_list, f'./tensor-eagle/{len_posi}/scores_list.pt')
+		torch.save(ss_token_list, f'./tensor-eagle/{len_posi}/ss_token_list.pt')
+		torch.save(draft_parents, f'./tensor-eagle/{len_posi}/draft_parents.pt')
 
 		mask_index = torch.searchsorted(top_scores_index, draft_parents - 1, right=False)
 		# mask_index[(top_scores_index[mask_index]!=draft_parents - 1)]=-1
@@ -906,11 +913,11 @@ class Model(nn.Module):
 		retrieve_indices = torch.tensor(retrieve_indices, dtype=torch.long)
 		del mask_index, mask_index_list, noleaf_index, noleaf_num, leaf_num, max_depth, rid
 		tree_position_ids = tree_position_ids.to(hidden_states.device)
-		#print(f'{draft_tokens.shape=}, {retrieve_indices.shape=}, {tree_mask.shape=}, {tree_position_ids.shape=}')
-		#torch.save(draft_tokens, f'./tensor-eagle/{len_posi}/draft_tokens.pt')
-		#torch.save(retrieve_indices, f'./tensor-eagle/{len_posi}/retrieve_indices.pt')
-		#torch.save(tree_mask, f'./tensor-eagle/{len_posi}/tree_mask.pt')
-		#torch.save(tree_position_ids, f'./tensor-eagle/{len_posi}/tree_position_ids.pt')
+		print(f'{draft_tokens.shape=}, {retrieve_indices.shape=}, {tree_mask.shape=}, {tree_position_ids.shape=}')
+		torch.save(draft_tokens, f'./tensor-eagle/{len_posi}/draft_tokens.pt')
+		torch.save(retrieve_indices, f'./tensor-eagle/{len_posi}/retrieve_indices.pt')
+		torch.save(tree_mask, f'./tensor-eagle/{len_posi}/tree_mask.pt')
+		torch.save(tree_position_ids, f'./tensor-eagle/{len_posi}/tree_position_ids.pt')
 
 		return draft_tokens, retrieve_indices, tree_mask, tree_position_ids
 
