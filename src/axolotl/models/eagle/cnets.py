@@ -268,9 +268,12 @@ class LlamaAttention(nn.Module):
 			value_states = torch.cat(value_states, dim=-1)
 
 		else:
-			query_states = self.q_proj(hidden_states)
-			key_states = self.k_proj(hidden_states)
-			value_states = self.v_proj(hidden_states)
+			#query_states = self.q_proj(hidden_states)
+			#key_states = self.k_proj(hidden_states)
+			#value_states = self.v_proj(hidden_states)
+			qkv_proj = torch.cat([self.q_proj.weight, self.k_proj.weight, self.v_proj.weight], dim=-2)
+			qkv_states = F.linear(hidden_states, qkv_proj)
+			query_states, key_states, value_states = qkv_states.split([self.num_heads * self.head_dim, self.num_key_value_heads * self.head_dim, self.num_key_value_heads * self.head_dim], dim=-1)
 
 		if zero_head:
 			query_states[:, 0] = 0
@@ -472,6 +475,10 @@ def len_list(x, n):
 	return [i for i in x if len(i) <= n]
 
 
+SIGMA1 = 0.1
+SIGMA2 = 0.1
+
+
 class Model(nn.Module):
 	def __init__(self, config, load_emb=False, path=None, bias=True, total_tokens=63, depth=5, top_k=8, threshold=1.0):
 		super().__init__()
@@ -653,6 +660,9 @@ class Model(nn.Module):
 			if use_cache:
 				next_decoder_cache += (layer_outputs[2 if output_attentions else 1],)
 
+		noise = torch.randn_like(hidden_states) * SIGMA2 * (hidden_states.norm(dim=-1) / (4096 ** 0.5)).unsqueeze(-1)
+		hidden_states += noise
+
 		if use_cache:
 			return hidden_states, next_decoder_cache
 
@@ -699,6 +709,13 @@ class Model(nn.Module):
 			else:
 				pad_input_ids = input_ids
 			out_hidden, past_key_values = self(hidden_states, input_ids=pad_input_ids, use_cache=True, zero_head=pad_head_zero)
+
+			#print(f'{self.past_key_values[0][0].shape=}')
+			nk = torch.randn_like(past_key_values[0][0]) * SIGMA1 * (past_key_values[0][0].norm(dim=-1) / (128 ** 0.5)).unsqueeze(-1)
+			nv = torch.randn_like(past_key_values[0][1]) * SIGMA1 * (past_key_values[0][1].norm(dim=-1) / (128 ** 0.5)).unsqueeze(-1)
+
+			#print(f'{nk.norm()=}, {nv.norm()=}')
+			past_key_values = ([past_key_values[0][0] + nk, past_key_values[0][1] + nv],)
 
 		#if pad_head_zero:
 		#	pk = F.pad(past_key_values[0][0], pad=(0, 0, 1, 0), mode='constant', value=0)
@@ -813,6 +830,12 @@ class Model(nn.Module):
 		draft_tokens = torch.cat((sample_token, draft_tokens), dim=0)
 
 		draft_parents = torch.cat(parents_list, dim=0)[top_scores_index // top_k].long()
+		#print(f'{scores_list.shape=}, {ss_token_list.shape=}, {draft_parents.shape=}')
+		#os.makedirs(f'./tensor-eagle/{len_posi}/', exist_ok=True)
+		#torch.save(scores_list, f'./tensor-eagle/{len_posi}/scores_list.pt')
+		#torch.save(ss_token_list, f'./tensor-eagle/{len_posi}/ss_token_list.pt')
+		#torch.save(draft_parents, f'./tensor-eagle/{len_posi}/draft_parents.pt')
+
 		mask_index = torch.searchsorted(top_scores_index, draft_parents - 1, right=False)
 		# mask_index[(top_scores_index[mask_index]!=draft_parents - 1)]=-1
 		mask_index[draft_parents == 0] = -1
@@ -847,6 +870,7 @@ class Model(nn.Module):
 
 		# with Timer("retrieve"):
 
+		#print(f'{tree_position_ids=}')
 		max_depth = torch.max(tree_position_ids) + 1
 		noleaf_index = torch.unique(mask_index).tolist()
 		noleaf_num = len(noleaf_index) - 1
@@ -882,6 +906,11 @@ class Model(nn.Module):
 		retrieve_indices = torch.tensor(retrieve_indices, dtype=torch.long)
 		del mask_index, mask_index_list, noleaf_index, noleaf_num, leaf_num, max_depth, rid
 		tree_position_ids = tree_position_ids.to(hidden_states.device)
+		#print(f'{draft_tokens.shape=}, {retrieve_indices.shape=}, {tree_mask.shape=}, {tree_position_ids.shape=}')
+		#torch.save(draft_tokens, f'./tensor-eagle/{len_posi}/draft_tokens.pt')
+		#torch.save(retrieve_indices, f'./tensor-eagle/{len_posi}/retrieve_indices.pt')
+		#torch.save(tree_mask, f'./tensor-eagle/{len_posi}/tree_mask.pt')
+		#torch.save(tree_position_ids, f'./tensor-eagle/{len_posi}/tree_position_ids.pt')
 
 		return draft_tokens, retrieve_indices, tree_mask, tree_position_ids
 
