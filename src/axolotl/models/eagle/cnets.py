@@ -663,6 +663,9 @@ class Model(nn.Module):
 		noise = torch.randn_like(hidden_states) * SIGMA2 * (hidden_states.norm(dim=-1) / (4096 ** 0.5)).unsqueeze(-1)
 		hidden_states += noise
 
+		print(f'{hidden_states.shape=}')
+		torch.save(hidden_states[:, -1], f'./tensor-eagle/hs6.pt')
+
 		if use_cache:
 			return hidden_states, next_decoder_cache
 
@@ -676,6 +679,7 @@ class Model(nn.Module):
 
 		input_ids = input_ids.to(hidden_states.device)
 		total_tokens = self.total_tokens
+		print(f'{total_tokens=}')
 		depth = self.depth
 		top_k = self.top_k
 
@@ -747,9 +751,11 @@ class Model(nn.Module):
 			profiler['head'] += time.time() - t0
 
 		last_p = self.logsoftmax(last_headout)
+		torch.save(last_p, f'./tensor-eagle/{base_n}/last_p.pt')
 		top = torch.topk(last_p, top_k, dim=-1)
 		topk_index, topk_p = top.indices, top.values
 		scores = topk_p[0]
+		torch.save(scores, f'./tensor-eagle/{base_n}/scores.pt')
 		scores_list.append(scores[None])
 		parents_list.append(torch.zeros(1, dtype=torch.long, device=scores.device))
 		ss_token.append(topk_index)
@@ -783,6 +789,7 @@ class Model(nn.Module):
 			bias2 = max(0, i - 1)
 			bias = 1 + top_k ** 2 * bias2 + bias1
 			parents = (topk_cs_index + bias)
+			print(f'parents-{base_n}-{len_posi-1}:', parents.shape)
 			parents_list.append(parents)
 
 			torch.cuda.synchronize()
@@ -796,11 +803,14 @@ class Model(nn.Module):
 				profiler['head'] += time.time() - t0
 
 			last_p = self.logsoftmax(last_headout)
+			torch.save(last_p, f'./tensor-eagle/{base_n}/last_p-{len_posi-1}.pt')
 
 			top = torch.topk(last_p, top_k, dim=-1)
 			topk_index, topk_p = top.indices, top.values
+			torch.save(topk_p, f'./tensor-eagle/{base_n}/topk_p-{len_posi-1}.pt')
 
 			cu_scores = topk_p + scores[:, None]
+			torch.save(cu_scores, f'./tensor-eagle/{base_n}/cu_scores-{len_posi-1}.pt')
 
 			topk_cs = torch.topk(cu_scores.view(-1), top_k, dim=-1)
 			topk_cs_index, topk_cs_p = topk_cs.indices, topk_cs.values
@@ -830,12 +840,16 @@ class Model(nn.Module):
 		scores_list = torch.cat(scores_list, dim=0).view(-1)
 		ss_token_list = torch.cat(ss_token, dim=0).view(-1)
 		top_scores = torch.topk(scores_list, total_tokens, dim=-1)
+		print(f'{top_scores.indices=}')
 		top_scores_index = top_scores.indices
 		top_scores_index = torch.sort(top_scores_index).values
 
 		draft_tokens = ss_token_list[top_scores_index]
 		draft_tokens = torch.cat((sample_token, draft_tokens), dim=0)
 
+		print(f'{len(parents_list)=}')
+		for i, p in enumerate(parents_list):
+			print(f'{i}, {p.shape=}')
 		draft_parents = torch.cat(parents_list, dim=0)[top_scores_index // top_k].long()
 		print(f'{scores_list.shape=}, {ss_token_list.shape=}, {draft_parents.shape=}')
 		os.makedirs(f'./tensor-eagle/{len_posi}/', exist_ok=True)
