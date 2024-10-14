@@ -364,6 +364,7 @@ class LlamaMLP(nn.Module):
 		self.act_fn = ACT2FN[config.hidden_act]
 
 	def forward(self, x):
+		#print(f'{self.config.pretraining_tp=}')
 		if self.config.pretraining_tp > 1:
 			slice = self.intermediate_size // self.config.pretraining_tp
 			gate_proj_slices = self.gate_proj.weight.split(slice, dim=0)
@@ -381,7 +382,13 @@ class LlamaMLP(nn.Module):
 			]
 			down_proj = sum(down_proj)
 		else:
-			down_proj = self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
+			gate = self.gate_proj(x)
+			torch.save(gate[:, -1], './tensor-eagle/gate.pt')
+			up = self.up_proj(x)
+			torch.save(up[:, -1], './tensor-eagle/up.pt')
+			gate_up = self.act_fn(gate) * up
+			torch.save(gate_up[:, -1], './tensor-eagle/gate_up.pt')
+			down_proj = self.down_proj(gate_up)
 
 		return down_proj
 
