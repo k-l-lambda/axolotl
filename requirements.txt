@@ -53,3 +53,5 @@ fastcore
 
 flask
 Flask[async]
+
+typer
