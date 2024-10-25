@@ -28,7 +28,7 @@ app = typer.Typer(pretty_exceptions_show_locals=False)
 
 
 def complete_chat (question, tokenizer, kv_cache_manager, model, speculator, eos_token_id, pad_token_id,
-	max_new_token, pad_head_zero=False, threshes=[4,3,2,2]):
+	max_new_token, threshes=[4,3,2,2]):
 	messages = []
 	turns = []
 	taus = []
@@ -66,7 +66,7 @@ def complete_chat (question, tokenizer, kv_cache_manager, model, speculator, eos
 			torch.as_tensor(input_ids).cuda(),
 			speculator,
 			kv_cache_manager,
-			new_tokens=100,
+			new_tokens=max_new_token,
 			max_seq_len=model.config.max_expected_seq_len,
 			decode_model=None,
 			# todo: we can only reduce-overhead for now when batch size is 1

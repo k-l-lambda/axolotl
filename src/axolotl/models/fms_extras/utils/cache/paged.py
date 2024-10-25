@@ -949,6 +949,7 @@ class PagedKVCacheManager:
         tensor_parallel_size: int = 1,
         device: Optional[Union[str, torch.device]] = "cuda",
         dtype: torch.dtype = torch.float32,
+        gpu_memory_utilization=0.96,
     ):
         self.dtype = dtype
         self.block_size = block_size
@@ -971,7 +972,7 @@ class PagedKVCacheManager:
                 emb_dim // tensor_parallel_size,
                 self.kv_heads,
                 num_layers,
-                0.96,
+                gpu_memory_utilization,
                 dtype,
             )
         self.total_num_gpu_blocks = total_num_gpu_blocks
