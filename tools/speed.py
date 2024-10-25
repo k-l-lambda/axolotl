@@ -50,10 +50,11 @@ def main ():
 		taus += datapoint['choices'][0]['taus']
 
 		durations['total'] += times
-		durations['base'] += datapoint['choices'][0]['base_time']
-		durations['ealayer'] += datapoint['choices'][0]['ealayer_time']
-		durations['head'] += datapoint['choices'][0]['head_time']
-		durations['other'] += times - (datapoint['choices'][0]['head_time'] + datapoint['choices'][0]['ealayer_time'] + datapoint['choices'][0]['base_time'])
+		if 'base_time' in datapoint['choices'][0]:
+			durations['base'] += datapoint['choices'][0]['base_time']
+			durations['ealayer'] += datapoint['choices'][0]['ealayer_time']
+			durations['head'] += datapoint['choices'][0]['head_time']
+			durations['other'] += times - (datapoint['choices'][0]['head_time'] + datapoint['choices'][0]['ealayer_time'] + datapoint['choices'][0]['base_time'])
 
 
 	data = []
