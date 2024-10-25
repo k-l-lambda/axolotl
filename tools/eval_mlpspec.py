@@ -55,7 +55,7 @@ def complete_chat (question, tokenizer, kv_cache_manager, model, speculator, eos
 		)
 		input_ids = tokenizer([prompt], add_special_tokens=False, ).input_ids
 		#print('input_ids:', len(input_ids[0]))
-		if len(input_ids[0]) > 3400:
+		if len(input_ids[0]) > 1800:
 			break
 
 		torch.cuda.synchronize()
@@ -158,6 +158,7 @@ def get_model_answers(
 		tensor_parallel_size=1,
 		dtype=torch.get_default_dtype(),
 		device=device,
+		gpu_memory_utilization=0.98,
 	)
 
 	pad_token_id = tokenizer.pad_token_id or tokenizer.convert_tokens_to_ids("<|end_of_text|>")
