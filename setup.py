@@ -5,6 +5,10 @@ import re
 from importlib.metadata import PackageNotFoundError, version
 
 from setuptools import find_packages, setup
+from torch.utils.cpp_extension import (
+    BuildExtension,
+    CUDAExtension,
+)
 
 
 def parse_requirements():
@@ -66,6 +70,24 @@ def parse_requirements():
     return _install_requires, _dependency_links
 
 
+CXX_FLAGS=['-g', '-O2', '-std=c++17', '-D_GLIBCXX_USE_CXX11_ABI=0']
+NVCC_FLAGS=['-O2', '-std=c++17', '-D_GLIBCXX_USE_CXX11_ABI=0', '-gencode', 'arch=compute_89,code=sm_89', '--threads', '8']
+
+paged_attn_extension = CUDAExtension(
+    name="axolotl.models.fms_extras.paged_c",
+    sources=[
+        "csrc/paged_attention/cache_kernels.cu",
+        "csrc/paged_attention/attention/attention_kernels.cu",
+        "csrc/paged_attention/cuda_utils_kernels.cu",
+        "csrc/paged_attention/pybind.cpp",
+    ],
+    extra_compile_args={
+        "cxx": CXX_FLAGS,
+        "nvcc": NVCC_FLAGS,
+    },
+)
+
+
 install_requires, dependency_links = parse_requirements()
 
 
@@ -110,5 +132,9 @@ setup(
             "lomo-optim==0.1.1",
             "torch-optimi==0.2.1",
         ],
+    },
+    ext_modules=[paged_attn_extension],
+    cmdclass={
+        'build_ext': BuildExtension,
     },
 )

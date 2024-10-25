@@ -114,6 +114,12 @@ class EaModel(nn.Module):
 			load_model_path=hf_hub_download(ea_model_path, "pytorch_model.bin")
 		ea_layer_state_dict = torch.load(load_model_path,
 										 map_location="cpu")
+
+		#for k, v in ea_layer_state_dict.items():
+		#	q_v = v.to(torch.float8_e4m3fn)
+		#	q_v = q_v.to(torch.bfloat16)
+		#	ea_layer_state_dict[k] = q_v
+
 		model = cls(
 			base_model,
 			base_model_path,
