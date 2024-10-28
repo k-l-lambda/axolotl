@@ -41,7 +41,7 @@ def main ():
 
 	for datapoint in data:
 		#qid=datapoint['question_id']
-		if len(datapoint['choices']) <= 0:
+		if len(datapoint['choices']) <= 0 or len(datapoint['choices'][0]['wall_time']) <= 0:
 			continue
 		answer = datapoint['choices'][0]['turns']
 		tokens = sum(datapoint['choices'][0]['new_tokens'])
