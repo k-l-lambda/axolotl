@@ -1,0 +1,71 @@
+base_model: /models/Meta-Llama-3-8B-Instruct
+base_model_config: /models/Meta-Llama-3-8B-Instruct
+model_type: LlamaForCausalLM
+tokenizer_type: LlamaTokenizer
+is_llama_derived_model: true
+
+load_in_8bit: false
+load_in_4bit: false
+strict: false
+
+datasets:
+  - path: /models/datasets/ShareGPT/
+    type: sharegpt
+    data_files: ShareGPT_V4.3_unfiltered_cleaned_split.json
+dataset_prepared_path:
+val_set_size: 0.01
+output_dir: ./outputs/llama3-8b-instruct
+
+sequence_len: 4096
+sample_packing: true
+pad_to_sequence_len: true
+
+wandb_project: mlpspec_test
+wandb_entity:
+wandb_watch:
+wandb_run_id:
+wandb_log_model:
+
+gradient_accumulation_steps: 4
+micro_batch_size: 2
+num_epochs: 4
+optimizer: adamw_bnb_8bit
+lr_scheduler: cosine
+learning_rate: 0.0005
+
+train_on_inputs: false
+group_by_length: false
+bf16: true
+fp16: false
+tf32: false
+
+gradient_checkpointing: true
+early_stopping_patience:
+resume_from_checkpoint:
+local_rank:
+logging_steps: 1
+xformers_attention:
+flash_attention: true
+
+warmup_steps: 40
+eval_steps: 40
+save_steps:
+save_total_limit: 1
+debug:
+deepspeed:
+weight_decay: 0.0
+fsdp:
+fsdp_config:
+special_tokens:
+  bos_token: "<|begin_of_text|>"
+  eos_token: "<|end_of_text|>"
+
+mlpspec:
+  emb_dim:                4096
+  inner_dim:              3072
+  n_candidates:           5
+  n_predict:              4
+  top_k_tokens_per_head:  [4, 3, 2, 2]
+  vocab_size:             128256
+
+ddp_find_unused_parameters: true

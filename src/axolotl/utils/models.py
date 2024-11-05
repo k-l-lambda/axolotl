@@ -51,13 +51,12 @@ from axolotl.utils.distributed import zero_only
 from axolotl.utils.gradient_checkpointing import hf_grad_checkpoint_unsloth_wrapper
 from axolotl.utils.lora_embeddings import get_linear_embedding_layers
 from axolotl.utils.model_shard_quant import load_sharded_model, load_sharded_model_quant
-from axolotl.monkeypatch.medusa_utils import replace_compute_loss, add_medusa_heads
-from axolotl.monkeypatch.medusa_utils import replace_compute_loss, add_medusa_heads, replace_create_optimizer
 from axolotl.monkeypatch.medusa_utils import (
     replace_compute_loss,
     add_medusa_heads,
     replace_create_optimizer,
 )
+from axolotl.monkeypatch.mlpspec_utils import add_mlpspec_heads
 
 LOG = logging.getLogger("axolotl")
 
@@ -1091,6 +1090,12 @@ def load_model(
                 torch.utils.checkpoint.checkpoint, use_reentrant=False
             )
             torch.utils.checkpoint.checkpoint = notfailing_checkpoint
+
+    if cfg.mlpspec is not None:
+        add_mlpspec_heads(model, **cfg.mlpspec)
+
+        for param in model.parameters():
+            param.requires_grad = False
 
     if cfg.ddp and not load_in_8bit:
         model.to(f"cuda:{cfg.local_rank}")
