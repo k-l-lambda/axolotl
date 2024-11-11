@@ -61,7 +61,7 @@ def add_mlpspec_speculator (self,
 				return_dict=return_dict,
 			)
 
-		hidden_states = self.model(
+		base_out = self.model(
 			input_ids=input_ids,
 			attention_mask=attention_mask,
 			position_ids=position_ids,
@@ -73,7 +73,7 @@ def add_mlpspec_speculator (self,
 			return_dict=return_dict,
 		)
 
-		outputs = self.mlp_model(hidden_states, input_ids)
+		outputs = self.mlp_model(base_out.last_hidden_state[:, :-n_predict], input_ids)
 
 		return outputs
 
