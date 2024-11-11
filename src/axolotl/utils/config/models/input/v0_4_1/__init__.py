@@ -503,6 +503,8 @@ class MlpspecOptions(BaseModel):
     top_k_tokens_per_head:  Optional[List[int]] = None
     vocab_size:             Optional[int] = None
 
+    decay_coefficient:      Optional[float] = 0.8
+
 class MlpspecConfig(BaseModel):
     mlpspec: Optional[MlpspecOptions] = None
 

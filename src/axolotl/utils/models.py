@@ -56,7 +56,7 @@ from axolotl.monkeypatch.medusa_utils import (
     add_medusa_heads,
     replace_create_optimizer,
 )
-from axolotl.monkeypatch.mlpspec_utils import add_mlpspec_speculator
+from axolotl.monkeypatch.mlpspec_utils import add_mlpspec_speculator, mlpspec_replace_compute_loss
 
 LOG = logging.getLogger("axolotl")
 
@@ -1094,9 +1094,13 @@ def load_model(
     #print(f'{cfg.mlpspec=}')
     if cfg.mlpspec is not None:
         add_mlpspec_speculator(model, **cfg.mlpspec)
+        mlpspec_replace_compute_loss(decay_coefficient=cfg.decay_coefficient)
 
         for param in model.parameters():
             param.requires_grad = False
+
+        for param in model.mlp_model.parameters():
+            param.requires_grad = True
 
     if cfg.ddp and not load_in_8bit:
         model.to(f"cuda:{cfg.local_rank}")
