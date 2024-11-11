@@ -56,7 +56,7 @@ from axolotl.monkeypatch.medusa_utils import (
     add_medusa_heads,
     replace_create_optimizer,
 )
-from axolotl.monkeypatch.mlpspec_utils import add_mlpspec_heads
+from axolotl.monkeypatch.mlpspec_utils import add_mlpspec_speculator
 
 LOG = logging.getLogger("axolotl")
 
@@ -1091,8 +1091,9 @@ def load_model(
             )
             torch.utils.checkpoint.checkpoint = notfailing_checkpoint
 
+    #print(f'{cfg.mlpspec=}')
     if cfg.mlpspec is not None:
-        add_mlpspec_heads(model, **cfg.mlpspec)
+        add_mlpspec_speculator(model, **cfg.mlpspec)
 
         for param in model.parameters():
             param.requires_grad = False

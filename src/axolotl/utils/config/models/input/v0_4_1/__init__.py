@@ -495,6 +495,18 @@ class MedusaConfig(BaseModel):
     medusa_self_distillation: Optional[bool] = False
 
 
+class MlpspecOptions(BaseModel):
+    emb_dim:                Optional[int] = None
+    inner_dim:              Optional[int] = None
+    n_candidates:           Optional[int] = None
+    n_predict:              Optional[int] = None
+    top_k_tokens_per_head:  Optional[List[int]] = None
+    vocab_size:             Optional[int] = None
+
+class MlpspecConfig(BaseModel):
+    mlpspec: Optional[MlpspecOptions] = None
+
+
 # pylint: disable=too-many-public-methods,too-many-ancestors
 class AxolotlInputConfig(
     ModelInputConfig,
@@ -508,6 +520,7 @@ class AxolotlInputConfig(
     GradioConfig,
     RemappedParameters,
     MedusaConfig,
+    MlpspecConfig,
     DeprecatedParameters,
     BaseModel,
 ):
