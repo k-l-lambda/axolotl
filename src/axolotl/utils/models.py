@@ -1094,7 +1094,7 @@ def load_model(
     #print(f'{cfg.mlpspec=}')
     if cfg.mlpspec is not None:
         add_mlpspec_speculator(model, **cfg.mlpspec)
-        mlpspec_replace_compute_loss(decay_coefficient=cfg.decay_coefficient)
+        mlpspec_replace_compute_loss(decay_coefficient=cfg.mlpspec.decay_coefficient)
 
         for param in model.parameters():
             param.requires_grad = False

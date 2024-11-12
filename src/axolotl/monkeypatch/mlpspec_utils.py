@@ -105,15 +105,15 @@ def mlpspec_replace_compute_loss(
 			mlpspec_return=True,
 		)
 		labels = inputs["labels"]
-		# Shift so that tokens < n predict n
 		loss = 0
 		loss_fct = CrossEntropyLoss()
 		log = {}
 
+		n_logits = logits.shape[2]
 		n_predict = logits.shape[0]
 		for i in range(n_predict):
 			medusa_logits = logits[i, :, : -(1 + i)].contiguous()
-			medusa_labels = labels[..., 1 + i :].contiguous()
+			medusa_labels = labels[..., 1 + i :n_logits].contiguous()
 			medusa_logits = medusa_logits.view(-1, logits.shape[-1])
 			medusa_labels = medusa_labels.view(-1)
 			medusa_labels = medusa_labels.to(medusa_logits.device)
