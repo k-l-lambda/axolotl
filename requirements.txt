@@ -55,3 +55,5 @@ flask
 Flask[async]
 
 typer
+
+ibm-fms==0.0.6
