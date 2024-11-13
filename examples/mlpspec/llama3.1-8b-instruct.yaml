@@ -1,0 +1,87 @@
+base_model: meta-llama/Meta-Llama-3.1-8B-Instruct
+base_model_config: meta-llama/Meta-Llama-3.1-8B-Instruct
+model_type: LlamaForCausalLM
+is_llama_derived_model: true
+
+load_in_8bit: false
+load_in_4bit: false
+strict: false
+
+datasets:
+  - path: /root/work/chat-regen/chat/llama3.1-8b-instruct/business-10k.jsonl
+    type: sharegpt.load_ultrachat
+  - path: /root/work/chat-regen/chat/llama3.1-8b-instruct/chat-10k.jsonl
+    type: sharegpt.load_ultrachat
+  - path: /root/work/chat-regen/chat/llama3.1-8b-instruct/education-10k.jsonl
+    type: sharegpt.load_ultrachat
+  - path: /root/work/chat-regen/chat/llama3.1-8b-instruct/health-10k.jsonl
+    type: sharegpt.load_ultrachat
+  - path: /root/work/chat-regen/chat/llama3.1-8b-instruct/knowledge-10k.jsonl
+    type: sharegpt.load_ultrachat
+  - path: /root/work/chat-regen/chat/llama3.1-8b-instruct/programming-10k.jsonl
+    type: sharegpt.load_ultrachat
+  - path: /root/work/chat-regen/chat/llama3.1-8b-instruct/support-10k.jsonl
+    type: sharegpt.load_ultrachat
+  - path: /root/work/chat-regen/chat/llama3.1-8b-instruct/writing-10k.jsonl
+    type: sharegpt.load_ultrachat
+  - path: /root/work/chat-regen/chat/llama3.1-8b-instruct/novita20240812.local.jsonl
+    type: sharegpt.load_ultrachat
+dataset_prepared_path:
+val_set_size: 0.01
+output_dir: /network/train/mlpspec/20241103-llama3.1-8b-instruct
+
+sequence_len: 1024
+sample_packing: true
+pad_to_sequence_len: true
+
+wandb_project: mlpspec
+wandb_entity: k-l-lambda-org
+wandb_watch:
+wandb_run_id:
+wandb_log_model:
+
+gradient_accumulation_steps: 1
+micro_batch_size: 1
+num_epochs: 100
+optimizer: adamw_bnb_8bit
+lr_scheduler: cosine
+learning_rate: 0.0005
+
+train_on_inputs: false
+group_by_length: false
+bf16: true
+fp16: false
+tf32: false
+
+gradient_checkpointing: true
+early_stopping_patience:
+resume_from_checkpoint:
+local_rank:
+logging_steps: 1
+xformers_attention:
+flash_attention: true
+
+warmup_steps: 40
+eval_steps: 40
+save_steps:
+save_total_limit: 1
+debug:
+deepspeed:
+weight_decay: 0.0
+fsdp:
+fsdp_config:
+special_tokens:
+  bos_token: "<|begin_of_text|>"
+  eos_token: "<|end_of_text|>"
+  pad_token: "<|end_of_text|>"
+
+mlpspec:
+  emb_dim:                4096
+  inner_dim:              3072
+  n_candidates:           5
+  n_predict:              4
+  top_k_tokens_per_head:  [4, 3, 2, 2]
+  vocab_size:             128256
+  decay_coefficient:      0.8
+
+ddp_find_unused_parameters: true
