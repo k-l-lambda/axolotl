@@ -5,14 +5,46 @@ from typing_extensions import Annotated
 import torch
 import json
 from transformers import AutoTokenizer
+from tqdm import tqdm
 
 
 
 app = typer.Typer(pretty_exceptions_show_locals=False)
 
 
-def resort_tokens(new_pairs):
-	pass
+def resort_tokens(new_pairs, n_reserve):
+	head = []
+
+	for k, v in tqdm(new_pairs[:n_reserve]):
+		done = False
+		for h, hi in head:
+			if k in h:
+				head.append((k, hi))
+				done = True
+				break
+
+		if not done:
+			head.append((k, v))
+
+	tail = []
+
+	for k, v in tqdm(new_pairs[n_reserve:]):
+		done = False
+		for h, hi in head:
+			if k in h:
+				tail.append((k, hi))
+				done = True
+				break
+
+		if not done:
+			tail.append((k, v))
+
+	resort_pairs = (head + tail)
+	resort_pairs.sort(key=lambda x: x[1])
+
+	in_pairs = [(p[0], i) for i, p in enumerate(resort_pairs[:n_reserve])]
+
+	return in_pairs
 
 
 @app.command()
@@ -38,6 +70,9 @@ def main (
 	# prune vocab
 	pairs = list(tokenizer_config['model']['vocab'].items())
 	new_pairs = [(k, (indices == v).nonzero().item()) for k, v in pairs]
+
+	# optional resort_tokens
+	#new_pairs = resort_tokens(new_pairs, n_reserve)
 
 	tokenizer_config['model']['vocab'] = dict(new_pairs)
 
