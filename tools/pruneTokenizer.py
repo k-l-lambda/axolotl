@@ -74,6 +74,8 @@ def main (
 	# optional resort_tokens
 	#new_pairs = resort_tokens(new_pairs, n_reserve)
 
+	new_pairs = [p for p in new_pairs if p[1] < n_reserve]
+
 	tokenizer_config['model']['vocab'] = dict(new_pairs)
 
 	# prune merges
@@ -81,8 +83,8 @@ def main (
 
 	def validate_merge (m):
 		t1, t2 = m.split(' ')
-		#return t1 in vocab and t2 in vocab and (t1 + t2) in vocab
-		return (t1 + t2) in vocab
+		return t1 in vocab and t2 in vocab and (t1 + t2) in vocab
+		#return (t1 + t2) in vocab
 
 	new_merges = [m for m in tokenizer_config['model']['merges'] if validate_merge(m)]
 	tokenizer_config['model']['merges'] = new_merges
