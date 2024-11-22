@@ -628,7 +628,7 @@ class AxolotlTrainer(SchedulerMixin, Trainer):
         return DataLoader(bench_dataset, **dataloader_params)
         # return self.accelerator.prepare(DataLoader(bench_dataset, **dataloader_params))
 
-    def compute_loss(self, model, inputs, return_outputs=False):
+    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         # use one's weighted cross entropy loss calc
         # if self.args.sample_packing:
         #     labels = inputs.pop("labels")
