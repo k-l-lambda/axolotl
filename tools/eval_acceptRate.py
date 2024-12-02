@@ -12,7 +12,7 @@ from fastchat.conversation import Conversation, SeparatorStyle
 app = typer.Typer(pretty_exceptions_show_locals=False)
 
 
-def test_question (tokenizer, model, question):
+def test_question (tokenizer, model, question, skip_user=True):
 	conv = Conversation(
 		name="llama3",
 		system_template="<|start_header_id|>system<|end_header_id|>\n\n{system_message}<|eot_id|>",
@@ -37,7 +37,10 @@ def test_question (tokenizer, model, question):
 			prompt = conv.get_prompt()
 			tokens = tokenizer.encode(prompt, return_tensors='pt')
 
-			if msg['role'] == 'user':
+			if tokens.shape[-1] > 2048:
+				continue
+
+			if skip_user and msg['role'] == 'user':
 				n_prefix = tokens.shape[-1]
 			else:
 				logits = model(tokens.cuda()).logits[0, n_prefix:].cpu()
@@ -54,8 +57,16 @@ def test_question (tokenizer, model, question):
 def run_eval (
 	model_path: Annotated[str, typer.Option('--model-path', help='Path to the base model.')],
 	data_path: Annotated[str, typer.Option('--data-path', help='Path to the data.')],
+	range_str: Annotated[str, typer.Option('--range')]='',
+	test_user: Annotated[bool, typer.Option('--test-user')]=False,
 ):
 	questions = datasets.Dataset.from_json(data_path)
+
+	if range_str:
+		# convert str to a range, e.g. -100 -> range(100)  5-10 -> range(5, 10)  200- -> range(200, len(questions))
+		bi, ei = range_str.split('-')
+		indices = range(int(bi or 0), len(questions) if ei == '' else int(ei))
+		questions = questions.select(indices)
 
 	tokenizer = AutoTokenizer.from_pretrained(model_path)
 	model = AutoModelForCausalLM.from_pretrained(model_path, torch_dtype=torch.float16, device_map='cuda')
@@ -63,11 +74,12 @@ def run_eval (
 	n_tokens, n_accepted_tokens = 0, 0
 	with tqdm(questions) as progress_bar:
 		for question in progress_bar:
-			t, a = test_question(tokenizer, model, question)
+			t, a = test_question(tokenizer, model, question, skip_user=not test_user)
 			n_tokens += t
 			n_accepted_tokens += a
 
-			progress_bar.set_description(f'{n_accepted_tokens}/{n_tokens} = {n_accepted_tokens/n_tokens:.4f}')
+			if n_tokens > 0:
+				progress_bar.set_description(f'{n_accepted_tokens}/{n_tokens} = {n_accepted_tokens/n_tokens:.4f}')
 
 	accept_rate = n_accepted_tokens / n_tokens
 	print(f'{accept_rate=}')
