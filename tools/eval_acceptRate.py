@@ -56,6 +56,7 @@ def test_question (tokenizer, model, question, skip_user=True):
 
 
 def eval_dataset (tokenizer, model, data_path, range_str=None, test_user=False):
+	print(f'Evaluating for dataset {data_path}:')
 	questions = datasets.Dataset.from_json(data_path)
 
 	if range_str:
@@ -75,7 +76,6 @@ def eval_dataset (tokenizer, model, data_path, range_str=None, test_user=False):
 				progress_bar.set_description(f'{n_accepted_tokens}/{n_tokens} = {n_accepted_tokens/n_tokens:.4f}')
 
 	accept_rate = n_accepted_tokens / max(1, n_tokens)
-	print(f'Results of dataset {data_path}:')
 	print(f'	{accept_rate=}, ({n_tokens}/{n_accepted_tokens})')
 
 	return accept_rate
