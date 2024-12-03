@@ -1,4 +1,5 @@
 
+import os
 import typer
 from typing_extensions import Annotated
 from tqdm import tqdm
@@ -37,8 +38,9 @@ def test_question (tokenizer, model, question, skip_user=True):
 			prompt = conv.get_prompt()
 			tokens = tokenizer.encode(prompt, return_tensors='pt')
 
-			if tokens.shape[-1] > 2048:
-				continue
+			if tokens.shape[-1] > 4096:
+				break
+			#print(f'{tokens.shape[-1]=}')
 
 			if skip_user and msg['role'] == 'user':
 				n_prefix = tokens.shape[-1]
@@ -53,14 +55,7 @@ def test_question (tokenizer, model, question, skip_user=True):
 	return n_total, n_accepted
 
 
-
-@app.command()
-def run_eval (
-	model_path: Annotated[str, typer.Option('--model-path', help='Path to the base model.')],
-	data_path: Annotated[str, typer.Option('--data-path', help='Path to the data.')],
-	range_str: Annotated[str, typer.Option('--range')]='',
-	test_user: Annotated[bool, typer.Option('--test-user')]=False,
-):
+def eval_dataset (tokenizer, model, data_path, range_str=None, test_user=False):
 	questions = datasets.Dataset.from_json(data_path)
 
 	if range_str:
@@ -68,9 +63,6 @@ def run_eval (
 		bi, ei = range_str.split('-')
 		indices = range(int(bi or 0), len(questions) if ei == '' else int(ei))
 		questions = questions.select(indices)
-
-	tokenizer = AutoTokenizer.from_pretrained(model_path)
-	model = AutoModelForCausalLM.from_pretrained(model_path, torch_dtype=torch.float16, device_map='cuda')
 
 	n_tokens, n_accepted_tokens = 0, 0
 	with tqdm(questions) as progress_bar:
@@ -82,9 +74,37 @@ def run_eval (
 			if n_tokens > 0:
 				progress_bar.set_description(f'{n_accepted_tokens}/{n_tokens} = {n_accepted_tokens/n_tokens:.4f}')
 
-	accept_rate = n_accepted_tokens / n_tokens
-	print(f'{accept_rate=}')
-	print(f'{n_tokens=}, {n_accepted_tokens=}')
+	accept_rate = n_accepted_tokens / max(1, n_tokens)
+	print(f'Results of dataset {data_path}:')
+	print(f'	{accept_rate=}, ({n_tokens}/{n_accepted_tokens})')
+
+	return accept_rate
+
+
+
+@app.command()
+def run_eval (
+	model_path: Annotated[str, typer.Option('--model-path', help='Path to the base model.')],
+	data_paths: Annotated[str, typer.Option('--data-path', help='Path to the data.')],
+	range_str: Annotated[str, typer.Option('--range')]='',
+	test_user: Annotated[bool, typer.Option('--test-user')]=False,
+):
+	data_paths = data_paths.split(',')
+
+	tokenizer = AutoTokenizer.from_pretrained(model_path)
+	model = AutoModelForCausalLM.from_pretrained(model_path, torch_dtype=torch.float16, device_map='cuda')
+
+	accept_rates = []
+	for data_path in data_paths:
+		accept_rates.append(eval_dataset(tokenizer, model, data_path, range_str, test_user))
+
+	set_names = [os.path.basename(data_path).split('.')[0] for data_path in data_paths]
+
+	# print markdown table for results, in column of set_name and accept_rate
+	print('| Dataset | Accept Rate |')
+	print('| --- | --- |')
+	for set_name, accept_rate in zip(set_names, accept_rates):
+		print(f'| {set_name} | {accept_rate:.4f} |')
 
 
 if __name__ == '__main__':
