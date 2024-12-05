@@ -8,6 +8,8 @@ import datasets
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from fastchat.conversation import Conversation, SeparatorStyle
 
+from tools.eagle_standalone import EagleStandalone
+
 
 
 app = typer.Typer(pretty_exceptions_show_locals=False)
@@ -85,14 +87,19 @@ def eval_dataset (tokenizer, model, data_path, range_str=None, test_user=False):
 @app.command()
 def run_eval (
 	model_path: Annotated[str, typer.Option('--model-path', help='Path to the base model.')],
+	base_model_path: Annotated[str, typer.Option('--base-model-path', help='Path to the base model for EAGLE.')],
 	data_paths: Annotated[str, typer.Option('--data-path', help='Path to the data.')],
 	range_str: Annotated[str, typer.Option('--range')]='',
 	test_user: Annotated[bool, typer.Option('--test-user')]=False,
 ):
 	data_paths = data_paths.split(',')
 
-	tokenizer = AutoTokenizer.from_pretrained(model_path)
-	model = AutoModelForCausalLM.from_pretrained(model_path, torch_dtype=torch.float16, device_map='cuda')
+	if 'eagle' in model_path.lower():
+		model = EagleStandalone.from_pretrained(base_model_path=base_model_path, ea_model_path=model_path)
+		tokenizer = model.tokenizer
+	else:
+		tokenizer = AutoTokenizer.from_pretrained(model_path)
+		model = AutoModelForCausalLM.from_pretrained(model_path, torch_dtype=torch.float16, device_map='cuda')
 
 	accept_rates = []
 	for data_path in data_paths:
