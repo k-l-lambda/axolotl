@@ -87,9 +87,9 @@ def eval_dataset (tokenizer, model, data_path, range_str=None, test_user=False):
 @app.command()
 def run_eval (
 	model_path: Annotated[str, typer.Option('--model-path', help='Path to the base model.')],
-	base_model_path: Annotated[str, typer.Option('--base-model-path', help='Path to the base model for EAGLE.')],
 	data_paths: Annotated[str, typer.Option('--data-path', help='Path to the data.')],
 	range_str: Annotated[str, typer.Option('--range')]='',
+	base_model_path: Annotated[str, typer.Option('--base-model-path', help='Path to the base model for EAGLE.')]=None,
 	test_user: Annotated[bool, typer.Option('--test-user')]=False,
 ):
 	data_paths = data_paths.split(',')
