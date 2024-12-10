@@ -509,6 +509,14 @@ class MlpspecConfig(BaseModel):
     mlpspec: Optional[MlpspecOptions] = None
 
 
+class TeacherDistillOptions(BaseModel):
+    model_id: str
+    loss_coefficient: Optional[float] = 1
+
+class TeacherDistillConfig(BaseModel):
+    teacher_distill: Optional[TeacherDistillOptions] = None
+
+
 # pylint: disable=too-many-public-methods,too-many-ancestors
 class AxolotlInputConfig(
     ModelInputConfig,
@@ -523,6 +531,7 @@ class AxolotlInputConfig(
     RemappedParameters,
     MedusaConfig,
     MlpspecConfig,
+    TeacherDistillConfig,
     DeprecatedParameters,
     BaseModel,
 ):

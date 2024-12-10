@@ -57,6 +57,7 @@ from axolotl.monkeypatch.medusa_utils import (
     replace_create_optimizer,
 )
 from axolotl.monkeypatch.mlpspec_utils import add_mlpspec_speculator, mlpspec_replace_compute_loss
+from axolotl.monkeypatch.teacher_utils import load_teacher_model, teacher_replace_compute_loss
 
 LOG = logging.getLogger("axolotl")
 
@@ -1101,6 +1102,10 @@ def load_model(
 
         for param in model.mlp_model.parameters():
             param.requires_grad = True
+
+    if cfg.teacher_distill is not None:
+        load_teacher_model(model, **cfg.teacher_distill)
+        teacher_replace_compute_loss(distill_coef=cfg.teacher_distill.loss_coefficient)
 
     if cfg.ddp and not load_in_8bit:
         model.to(f"cuda:{cfg.local_rank}")
