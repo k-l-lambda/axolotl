@@ -16,7 +16,7 @@ eval_strategy: no
 
 dataset_prepared_path:
 val_set_size: 0.05
-output_dir: /network/train/llama3/20241210-llama3.2-100M-pretrain
+output_dir: /network/train/llama3/20241210-llama3.2-200M-pretrain
 auto_resume_from_checkpoints: true
 
 sequence_len: 8192
