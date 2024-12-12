@@ -77,6 +77,7 @@ def worker (device_index, qin, qout):
 					max_new_tokens=input['max_new_tokens'],
 					eos_token_id=eos_token_id,
 					pad_token_id=tokenizer.pad_token_id,
+					use_cache=True,
 				)
 
 			generated_text = tokenizer.decode(output_ids[0, input_ids.shape[1]:], skip_special_tokens=True)
