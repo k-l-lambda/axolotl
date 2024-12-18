@@ -17,7 +17,8 @@ def teacher_replace_compute_loss(distill_coef):
 	def compute_loss(self, model, inputs, return_outputs=False):
 		loss_fct, output = original_compute_loss(self, model, inputs, return_outputs=True)
 
-		teacher_logits = model.teacher_model(**inputs).logits
+		teacher_model = model.teacher_model if hasattr(model, 'teacher_model') else model.module.teacher_model
+		teacher_logits = teacher_model(**inputs).logits
 		loss_distill = F.kl_div(F.log_softmax(output.logits, dim=-1), F.softmax(teacher_logits, dim=-1), reduction='sum')
 
 		loss = loss_fct + loss_distill * distill_coef
