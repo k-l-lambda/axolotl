@@ -47,6 +47,9 @@ def test_question (tokenizer, model, question, skip_user=True):
 			if skip_user and msg['role'] == 'user':
 				n_prefix = tokens.shape[-1]
 			else:
+				if 'input' in msg and msg['input']:
+					continue
+
 				n_prefix = max(0, n_prefix - 1)
 				logits = model(tokens.cuda()).logits[0, n_prefix:-2].cpu()
 				n_total += logits.shape[0]
