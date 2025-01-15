@@ -225,7 +225,13 @@ class UltrachatShareGPTPromptTokenizingStrategy(SimpleShareGPTPromptTokenizingSt
         conversations = prompt["messages"]
         role_map = {"user": "human", "assistant": "gpt", "system": "system"}
         turns = [
-            {"from": role_map[t["role"]], "value": t["content"]} for t in conversations
+            {
+                "from": role_map[t["role"]],
+                "value": t["content"],
+                "weight": 1
+                    if "weight" not in t or t["weight"] is None
+                    else t["weight"],
+            } for t in conversations
         ]
         return turns
 
