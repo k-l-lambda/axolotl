@@ -15,6 +15,7 @@ from tools.eagle_standalone import EagleStandalone
 app = typer.Typer(pretty_exceptions_show_locals=False)
 
 
+@torch.inference_mode()
 def test_question (tokenizer, model, question, skip_user=True):
 	conv = Conversation(
 		name="llama3",
@@ -60,9 +61,13 @@ def test_question (tokenizer, model, question, skip_user=True):
 	return n_total, n_accepted
 
 
+@torch.inference_mode()
 def test_instruction (tokenizer, model, entry, **_):
 	prompt = entry['instruction']
 	output = entry['response']
+
+	if prompt is None or output is None:
+		return 0, 0
 
 	input_ids = tokenizer.encode(prompt, return_tensors='pt', add_special_tokens=False)
 	output_ids = tokenizer.encode(output, return_tensors='pt', add_special_tokens=False)
