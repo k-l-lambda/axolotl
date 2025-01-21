@@ -60,7 +60,31 @@ def test_question (tokenizer, model, question, skip_user=True):
 	return n_total, n_accepted
 
 
-def eval_dataset (tokenizer, model, data_path, range_str=None, test_user=False):
+def test_instruction (tokenizer, model, entry, **_):
+	prompt = entry['instruction']
+	output = entry['response']
+
+	input_ids = tokenizer.encode(prompt, return_tensors='pt', add_special_tokens=False)
+	output_ids = tokenizer.encode(output, return_tensors='pt', add_special_tokens=False)
+	ids = torch.cat([input_ids, output_ids], dim=-1)
+	#print(f'{ids.shape[1]=}, {input_ids.shape[1]=}')
+
+	if input_ids.shape[1] > 16383:
+		return 0, 0
+
+	ids = ids[:, :16384]
+
+	n_prefix = input_ids.shape[-1]
+	logits = model(ids.cuda()).logits[0, n_prefix - 1:-1].cpu()
+	n_total = logits.shape[0]
+
+	acception = logits.argmax(dim=-1) == ids[0, n_prefix:]
+	n_accepted = acception.sum().item()
+
+	return n_total, n_accepted
+
+
+def eval_dataset (tokenizer, model, data_path, range_str=None, test_user=False, by_instruction=False):
 	print(f'Evaluating for dataset {data_path}:')
 	questions = datasets.Dataset.from_json(data_path)
 
@@ -70,10 +94,12 @@ def eval_dataset (tokenizer, model, data_path, range_str=None, test_user=False):
 		indices = range(int(bi or 0), len(questions) if ei == '' else int(ei))
 		questions = questions.select(indices)
 
+	test_func = test_instruction if by_instruction else test_question
+
 	n_tokens, n_accepted_tokens = 0, 0
 	with tqdm(questions) as progress_bar:
 		for question in progress_bar:
-			t, a = test_question(tokenizer, model, question, skip_user=not test_user)
+			t, a = test_func(tokenizer, model, question, skip_user=not test_user)
 			n_tokens += t
 			n_accepted_tokens += a
 
@@ -94,6 +120,7 @@ def run_eval (
 	range_str: Annotated[str, typer.Option('--range')]='',
 	base_model_path: Annotated[str, typer.Option('--base-model-path', help='Path to the base model for EAGLE.')]=None,
 	test_user: Annotated[bool, typer.Option('--test-user')]=False,
+	by_instruction: Annotated[bool, typer.Option('--instruction')]=False,
 ):
 	data_paths = data_paths.split(',')
 
@@ -106,7 +133,7 @@ def run_eval (
 
 	accept_rates = []
 	for data_path in data_paths:
-		accept_rates.append(eval_dataset(tokenizer, model, data_path, range_str, test_user))
+		accept_rates.append(eval_dataset(tokenizer, model, data_path, range_str, test_user, by_instruction=by_instruction))
 
 	set_names = [os.path.basename(data_path).split('.')[0] for data_path in data_paths]
 
