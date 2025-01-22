@@ -1,4 +1,4 @@
-base_model: /models/mistral-100M
+base_model: /network/models/mistral-100M-init
 model_type: AutoModelForCausalLM
 tokenizer_type: AutoTokenizer
 
@@ -13,11 +13,10 @@ pretraining_dataset:
 
 dataset_prepared_path:
 #val_set_size: 0.001
-output_dir: /models/train/20250122-mistral-100m-pretrain
+output_dir: /network/train/mistral/20250122-mistral-100m-pretrain
 auto_resume_from_checkpoints: true
 
-#sequence_len: 8192
-sequence_len: 256
+sequence_len: 4096
 sample_packing: True
 pad_to_sequence_len: true
 
@@ -29,9 +28,8 @@ wandb_log_model:
 
 gradient_accumulation_steps: 1
 micro_batch_size: 1
-#max_steps: 500000
-max_steps: 5000
-num_epochs: 1
+max_steps: 500000
+num_epochs: 10
 optimizer: adamw_bnb_8bit
 lr_scheduler: cosine
 learning_rate: 0.0002
