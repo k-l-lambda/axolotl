@@ -154,7 +154,7 @@ class AlpacaPromptTokenizingStrategy(InstructionPromptTokenizingStrategy):
         return (
             prompt["instruction"],
             prompt["input"] if "input" in prompt else "",
-            prompt["output"],
+            prompt.get("response") or prompt.get("output"),
         )
 
 
